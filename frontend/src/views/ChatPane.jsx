@@ -1,23 +1,40 @@
 import { observer } from "mobx-react-lite";
+import { useEffect } from "react";
 
 import { useStore } from "@/hooks/useStore";
 import { useChat } from "@/hooks/useChat";
 import { ChatMessages } from "@/components/chat/ChatMessages";
 import { ChatInput } from "@/components/chat/ChatInput";
+import { TeamMessages } from "@/components/chat/TeamMessages";
 
 /**
  * ChatPane — the middle column: self-rendered conversation.
  *
- * No <CopilotChat>; we use the headless CopilotKit API (useChat) and render
- * messages ourselves (avatars + bubbles + collapsible tool calls). One unified
- * renderer for both single-agent and team sessions (team group-chat styling is
- * a later refinement on top of this same component).
+ * Two modes, same column:
+ *  - Single-agent session (kind != team): CopilotKit headless via useChat.
+ *  - Team session (kind == team): TeamStore SSE group-chat (speaker bubbles).
+ *
+ * On team open, subscribe to the team's live stream (team.open); on leave,
+ * close it.
  */
 export const ChatPane = observer(function ChatPane() {
-  const { sessions } = useStore();
+  const { sessions, team } = useStore();
   const active = sessions.active;
   const isTeam = active?.kind === "team";
+
+  // single-agent chat API (only meaningful for non-team sessions, but the hook
+  // must be called unconditionally to satisfy React rules-of-hooks)
   const { items, sendMessage, isLoading } = useChat();
+
+  // subscribe / unsubscribe the team stream when switching to/from a team
+  useEffect(() => {
+    if (isTeam && active) {
+      team.open(active.id);
+    } else {
+      team.close();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTeam, active?.id]);
 
   return (
     <div className="flex h-full flex-col bg-background">
@@ -39,21 +56,35 @@ export const ChatPane = observer(function ChatPane() {
           </span>
         )}
         <span className="ml-auto text-[11px] text-muted-foreground">
-          {isLoading ? "thinking…" : isTeam ? "group chat" : "1:1"}
+          {isTeam
+            ? team.status === "running"
+              ? "running…"
+              : team.status
+            : isLoading
+              ? "thinking…"
+              : "1:1"}
         </span>
       </div>
 
-      {/* messages */}
-      <ChatMessages items={items} />
+      {/* messages: team group-chat OR single-agent chat */}
+      {isTeam ? (
+        <TeamMessages messages={team.messages} onToggle={team.toggleCollapse} />
+      ) : (
+        <ChatMessages items={items} />
+      )}
 
-      {/* input */}
-      <ChatInput
-        onSend={(text) => sendMessage({ message: text })}
-        isLoading={isLoading}
-        onStop={() => {
-          /* stop streaming — wired in a later step */
-        }}
-      />
+      {/* input: team uses its own store action, single uses CopilotKit */}
+      {isTeam ? (
+        <ChatInput
+          onSend={(text) => team.sendMessage(text)}
+          isLoading={team.status === "running"}
+        />
+      ) : (
+        <ChatInput
+          onSend={(text) => sendMessage({ message: text })}
+          isLoading={isLoading}
+        />
+      )}
     </div>
   );
 });

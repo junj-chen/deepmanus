@@ -200,6 +200,23 @@
     margin-inline: auto;
   }
 
+  /* Role text colors (match the role dots) — for team group-chat avatars */
+  .text-role-teamleader {
+    color: hsl(var(--role-teamleader));
+  }
+  .text-role-researcher {
+    color: hsl(var(--role-researcher));
+  }
+  .text-role-coder {
+    color: hsl(var(--role-coder));
+  }
+  .text-role-user {
+    color: hsl(var(--role-user));
+  }
+  .text-role-system {
+    color: hsl(var(--role-system));
+  }
+
   /* Restrained entrance animation */
   .anim-rise {
     animation: rise 0.22s cubic-bezier(0.16, 1, 0.3, 1);
