@@ -1,0 +1,240 @@
+@import "tailwindcss";
+
+/* ── Fonts: one family, two weights (omma.build discipline) ─────────────── */
+/* Geist (sans) for chrome/labels; JetBrains Mono for code/agent output.
+   (all @import statements must precede other rules per PostCSS) */
+@import "@fontsource-variable/geist/wght.css";
+@import "@fontsource-variable/jetbrains-mono/wght.css";
+
+/*
+ * Register the design tokens as Tailwind v4 theme colors so utility classes
+ * like bg-background / bg-card / bg-sidebar are generated. (v4 reads colors
+ * from @theme, NOT from tailwind.config.js like v3.)
+ * The HSL values reference the CSS variables in :root below via var(), so the
+ * semantic tokens stay single-source.
+ */
+@theme {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-sidebar: hsl(var(--sidebar));
+  --color-popover: hsl(var(--popover));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--card));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+}
+
+/*
+ * deepopen design system — "quiet dark, cinematic minimal".
+ * Inspired by omma.build: near-black background, a single muted accent,
+ * generous whitespace, restrained motion. The content leads; the chrome
+ * recedes.
+ */
+
+@layer base {
+  :root {
+    /* ── Surface (near-black, layered) ─────────────────────────────── */
+    /* Three tiers create depth: chat (deepest) < rails (mid) < sidebar (top).
+       Steps are large enough to read at a glance (≈5–8 lightness points). */
+    --background: 240 6% 4%;        /* #0a0a0b — deepest: chat area focus */
+    --card: 240 5% 10%;             /* #18181d — mid: left rail, cards */
+    --sidebar: 240 5% 16%;          /* #272730 — top: right playground rail */
+    --popover: 240 5% 18%;          /* #2c2c36 — menus, popovers */
+
+    /* ── Text (soft, never pure white) ─────────────────────────────── */
+    --foreground: 240 5% 93%;       /* #ededee — primary text */
+    --muted-foreground: 240 4% 45%; /* #6b6b72 — quiet labels */
+
+    /* ── The single accent: soft sky glow ──────────────────────────── */
+    --accent: 199 70% 70%;          /* #7dd3fc — active/running/links */
+    --accent-foreground: 240 6% 4%; /* dark text on accent */
+
+    /* kept for shadcn parity, tuned to the palette */
+    --primary: 199 70% 70%;
+    --primary-foreground: 240 6% 4%;
+    --secondary: 240 5% 12%;
+    --secondary-foreground: 240 5% 93%;
+    --destructive: 0 60% 55%;
+    --destructive-foreground: 240 5% 93%;
+
+    /* ── Lines (almost invisible) ──────────────────────────────────── */
+    --border: 240 5% 13%;           /* #1e1e22 — whisper-thin dividers */
+    --input: 240 5% 13%;
+    --ring: 199 70% 70%;
+
+    --radius: 0.625rem;
+
+    /* semantic role colors (used sparingly, only as small dots/chips) */
+    --role-teamleader: 152 50% 55%;
+    --role-researcher: 199 70% 65%;
+    --role-coder: 38 80% 60%;
+    --role-user: 240 5% 70%;
+    --role-system: 0 60% 55%;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    /* Native controls (select dropdowns, date pickers, scrollbars) render in
+       dark mode, matching the canvas. Stops the team @-selector option list
+       from popping up in a jarring light theme. */
+    color-scheme: dark;
+    /* Geist for UI chrome */
+    font-family:
+      "Geist Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* monospace utility — agent output, code, status (JetBrains Mono) */
+  .font-mono,
+  code,
+  pre,
+  kbd {
+    font-family: "JetBrains Mono Variable", ui-monospace, monospace;
+  }
+
+  /* Scrollbars: minimal, fade in on hover */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(240 5% 18%);
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(240 4% 28%);
+  }
+}
+
+/* ── CopilotKit chat overrides: make its default light cards dissolve into
+   the quiet-dark canvas. Targets the `cpk:` class prefix CopilotKit uses. ── */
+[class*="cpk:"] {
+  /* transparent surfaces so our near-black bg shows through */
+  --cpk-background: transparent;
+  --cpk-surface: transparent;
+  --cpk-border: hsl(var(--border) / 0.6);
+  --cpk-text: hsl(var(--foreground));
+  --cpk-text-muted: hsl(var(--muted-foreground));
+  --cpk-accent: hsl(var(--accent));
+}
+
+/* Remove the default max-width / centered card so we control the column. */
+[class*="cpk:max-w-"] {
+  max-width: 100% !important;
+}
+
+/* User vs assistant bubbles: keep them borderless & soft. */
+[class*="cpk:"][class*="bg-"] {
+  background: transparent !important;
+}
+
+/* Input area: minimal, single line at bottom. */
+[class*="cpk:"] textarea {
+  background: hsl(var(--card)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: var(--radius) !important;
+  color: hsl(var(--foreground)) !important;
+  font-family: "Geist Variable", sans-serif !important;
+}
+
+/* Headings / titles inside the chat → subdued. */
+[class*="cpk:"] h1,
+[class*="cpk:"] h2,
+[class*="cpk:"] h3 {
+  color: hsl(var(--foreground) / 0.9) !important;
+  font-weight: 600 !important;
+}
+
+/* Hide CopilotKit's promotional toast/notification (e.g. "Slack early access").
+   It's a fixed-position banner; we suppress it via the data attributes /
+   text content it carries. */
+[class*="cpk:"].fixed,
+[class*="fixed"][class*="cpk:"] {
+  display: none !important;
+}
+
+/* ── Resizable panel separators ───────────────────────────────────────────
+   react-resizable-panels v4: the drag handle is the Separator itself. We give
+   it a generous hit area (w-1.5) with a thin visible line inside, and brighten
+   the line on hover / while dragging (data-separator attribute carries state). */
+.sep-bar:hover .sep-line,
+.sep-bar[data-separator]:active .sep-line {
+  background: hsl(var(--accent) / 0.6) !important;
+  width: 2px;
+}
+
+@layer utilities {
+  /* Content width: omma-style focused column */
+  .content-narrow {
+    max-width: 720px;
+    margin-inline: auto;
+  }
+
+  /* Restrained entrance animation */
+  .anim-rise {
+    animation: rise 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* subtle glow for the single accent (active states) */
+  .accent-glow {
+    box-shadow: 0 0 0 1px hsl(var(--accent) / 0.2),
+      0 0 12px -2px hsl(var(--accent) / 0.25);
+  }
+
+  /* role dot helpers */
+  .dot-teamleader {
+    background: hsl(var(--role-teamleader));
+  }
+  .dot-researcher {
+    background: hsl(var(--role-researcher));
+  }
+  .dot-coder {
+    background: hsl(var(--role-coder));
+  }
+  .dot-user {
+    background: hsl(var(--role-user));
+  }
+  .dot-system {
+    background: hsl(var(--role-system));
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "deepopen-runtime",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/index.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "@copilotkit/runtime": "^1.61.2",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1"
+  }
+}
