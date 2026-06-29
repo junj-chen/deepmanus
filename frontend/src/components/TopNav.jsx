@@ -26,7 +26,7 @@ export function TopNav() {
       {/* Logo (left) */}
       <button className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-sm font-semibold">
         <Sparkles className="size-3.5 text-accent" />
-        deepopen
+        OpenManus
       </button>
 
       {/* Nav items (centered) */}
@@ -47,7 +47,7 @@ export function TopNav() {
           >
             {item.label}
             {active === item.key && item.active && (
-              <span className="absolute -bottom-[9px] left-2 right-2 h-px bg-accent" />
+              <span className="absolute -bottom-[9px] left-2 right-2 h-0.5 rounded-full bg-accent" />
             )}
           </button>
         ))}

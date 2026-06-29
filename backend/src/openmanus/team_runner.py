@@ -52,6 +52,9 @@ class TeamRegistry:
             self._queues[team_id] = asyncio.Queue()
         return self._queues[team_id]
 
+    def has(self, team_id: str) -> bool:
+        return team_id in self._queues
+
     def is_running(self, team_id: str) -> bool:
         t = self._tasks.get(team_id)
         return t is not None and not t.done()

@@ -17,13 +17,16 @@
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
   --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
   --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
   --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
   --color-primary: hsl(var(--primary));
   --color-primary-foreground: hsl(var(--primary-foreground));
   --color-secondary: hsl(var(--secondary));
   --color-secondary-foreground: hsl(var(--secondary-foreground));
-  --color-muted: hsl(var(--card));
+  --color-muted: hsl(var(--muted));
   --color-muted-foreground: hsl(var(--muted-foreground));
   --color-accent: hsl(var(--accent));
   --color-accent-foreground: hsl(var(--accent-foreground));
@@ -38,7 +41,7 @@
 }
 
 /*
- * deepopen design system — "quiet dark, cinematic minimal".
+ * openmanus design system — "quiet dark, cinematic minimal".
  * Inspired by omma.build: near-black background, a single muted accent,
  * generous whitespace, restrained motion. The content leads; the chrome
  * recedes.
@@ -50,12 +53,16 @@
     /* Three tiers create depth: chat (deepest) < rails (mid) < sidebar (top).
        Steps are large enough to read at a glance (≈5–8 lightness points). */
     --background: 240 6% 4%;        /* #0a0a0b — deepest: chat area focus */
+    --foreground: 240 5% 93%;       /* #ededee — primary text */
     --card: 240 5% 10%;             /* #18181d — mid: left rail, cards */
+    --card-foreground: 240 5% 93%;  /* readable text on card */
     --sidebar: 240 5% 16%;          /* #272730 — top: right playground rail */
-    --popover: 240 5% 18%;          /* #2c2c36 — menus, popovers */
+    --sidebar-foreground: 240 5% 90%;
+    --popover: 240 5% 18%;          /* #2c2c36 — menus, popovers, tooltips */
+    --popover-foreground: 240 5% 93%; /* readable text on popover */
 
     /* ── Text (soft, never pure white) ─────────────────────────────── */
-    --foreground: 240 5% 93%;       /* #ededee — primary text */
+    --muted: 240 5% 12%;            /* quiet surface (was wrongly = card) */
     --muted-foreground: 240 4% 45%; /* #6b6b72 — quiet labels */
 
     /* ── The single accent: soft sky glow ──────────────────────────── */
@@ -136,53 +143,6 @@
   }
 }
 
-/* ── CopilotKit chat overrides: make its default light cards dissolve into
-   the quiet-dark canvas. Targets the `cpk:` class prefix CopilotKit uses. ── */
-[class*="cpk:"] {
-  /* transparent surfaces so our near-black bg shows through */
-  --cpk-background: transparent;
-  --cpk-surface: transparent;
-  --cpk-border: hsl(var(--border) / 0.6);
-  --cpk-text: hsl(var(--foreground));
-  --cpk-text-muted: hsl(var(--muted-foreground));
-  --cpk-accent: hsl(var(--accent));
-}
-
-/* Remove the default max-width / centered card so we control the column. */
-[class*="cpk:max-w-"] {
-  max-width: 100% !important;
-}
-
-/* User vs assistant bubbles: keep them borderless & soft. */
-[class*="cpk:"][class*="bg-"] {
-  background: transparent !important;
-}
-
-/* Input area: minimal, single line at bottom. */
-[class*="cpk:"] textarea {
-  background: hsl(var(--card)) !important;
-  border: 1px solid hsl(var(--border)) !important;
-  border-radius: var(--radius) !important;
-  color: hsl(var(--foreground)) !important;
-  font-family: "Geist Variable", sans-serif !important;
-}
-
-/* Headings / titles inside the chat → subdued. */
-[class*="cpk:"] h1,
-[class*="cpk:"] h2,
-[class*="cpk:"] h3 {
-  color: hsl(var(--foreground) / 0.9) !important;
-  font-weight: 600 !important;
-}
-
-/* Hide CopilotKit's promotional toast/notification (e.g. "Slack early access").
-   It's a fixed-position banner; we suppress it via the data attributes /
-   text content it carries. */
-[class*="cpk:"].fixed,
-[class*="fixed"][class*="cpk:"] {
-  display: none !important;
-}
-
 /* ── Resizable panel separators ───────────────────────────────────────────
    react-resizable-panels v4: the drag handle is the Separator itself. We give
    it a generous hit area (w-1.5) with a thin visible line inside, and brighten
@@ -229,6 +189,24 @@
     to {
       opacity: 1;
       transform: translateY(0);
+    }
+  }
+
+  /* Live "agent working" pulse dot on a session avatar */
+  .animate-pulse-dot {
+    animation: pulse-dot 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+  @keyframes pulse-dot {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+      box-shadow: 0 0 0 0 hsl(var(--accent) / 0.5);
+    }
+    50% {
+      opacity: 0.7;
+      transform: scale(1.15);
+      box-shadow: 0 0 0 4px hsl(var(--accent) / 0);
     }
   }
 

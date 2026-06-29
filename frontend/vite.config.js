@@ -16,20 +16,30 @@ export default defineConfig({
     // same LAN (e.g. http://192.168.1.11:5173).
     host: true,
     port: 5173,
-    // Proxy the CopilotKit runtime calls to the Express middleware layer.
+    // Proxy backend calls straight to the Python FastAPI layer (no more
+    // CopilotKit/Express middleware).
     proxy: {
-      '/api/copilotkit': {
-        target: 'http://127.0.0.1:4000',
+      // AG-UI agent run endpoint (POST -> SSE stream of AG-UI events).
+      '/agents': {
+        target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
-      // Also proxy the sessions API (used by the mobx SessionStore) to the
-      // Python backend so the phone reaches it via the frontend host.
+      // Sessions API (mobx SessionStore CRUD).
       '/sessions': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
       // Team group-chat API (SSE stream + messages).
       '/teams': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      // Workdir validation + misc.
+      '/workdir': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+      '/health': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
       },

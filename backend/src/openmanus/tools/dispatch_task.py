@@ -27,6 +27,7 @@ from langchain_core.tools.base import InjectedToolArg
 from pydantic import BaseModel, Field
 
 from ..db import session_store
+from .roles import ROLES
 
 logger = logging.getLogger(__name__)
 
@@ -44,29 +45,9 @@ class DispatchTaskInput(BaseModel):
 
 
 # --- sub-agent role catalogue ----------------------------------------------
-# Each role defines its allowed tools (enforced) and system prompt. Tools not
-# listed here are stripped from the sub-agent's toolset at dispatch time.
-ROLES: dict[str, dict[str, Any]] = {
-    "researcher": {
-        "prompt": (
-            "You are a researcher sub-agent. Investigate the codebase to answer "
-            "the task. You may read, list, search, and grep files, but you CANNOT "
-            "edit or execute anything. Return a concise findings summary."
-        ),
-        "allowed_tools": {"read_file", "list_directory", "ls", "glob", "grep"},
-    },
-    "coder": {
-        "prompt": (
-            "You are a coder sub-agent. Implement the requested change in the "
-            "codebase. You may read, edit, write, and run files. Return a brief "
-            "summary of what you changed."
-        ),
-        "allowed_tools": {
-            "read_file", "write_file", "edit_file", "list_directory", "ls",
-            "glob", "grep", "execute",
-        },
-    },
-}
+# ROLES is defined in .roles (shared with dispatch_single). Each role defines
+# its allowed tools (intended to be enforced; today applied via prompt only)
+# and system prompt.
 
 
 def _filter_tools(all_tools: list[BaseTool], allowed: set[str]) -> list[BaseTool]:
@@ -178,9 +159,36 @@ def make_dispatch_task_tool(
                 "role": target_agent,
                 "allowed_tools": sorted(role["allowed_tools"]),
                 "parent_tool_use_id": tool_call_id,
+                # This is an INTRA-TEAM dispatch (teamleader → specialist), not
+                # a top-level single-agent task from the default entry. Marked
+                # so the session list can hide team-internal work from the top
+                # level (only default-dispatched subagents show in TASKS).
+                "internal": True,
             },
         )
         child_id = child["id"]
+
+        # If this dispatch is happening INSIDE a team (parent is a team session),
+        # surface the sub-agent's work in the team group chat so the user can
+        # watch "researcher started → coder started" as it happens. Lazily import
+        # team_runner to avoid a circular import at module load.
+        from ..team_runner import teams as _team_registry, _push_group_message
+
+        parent_row = await session_store.get(parent_session_id)
+        team_id = (
+            parent_session_id
+            if parent_row and parent_row.get("kind") == "team"
+            else None
+        )
+        in_team = team_id and _team_registry.has(team_id)
+
+        if in_team:
+            await _push_group_message(
+                _team_registry.get_queue(team_id),
+                team_id,
+                speaker=target_agent,
+                text=f"▶ 开始执行: {task_description[:100]}",
+            )
 
         # Record the delegation edge.
         await session_store.add_link(
@@ -205,6 +213,15 @@ def make_dispatch_task_tool(
             logger.exception("dispatch_task sub-agent failed")
             await session_store.update(child_id, status="error")
             answer = f"(sub-agent '{target_agent}' failed: {exc})"
+
+        # Surface the sub-agent's result in the team group chat too.
+        if in_team:
+            await _push_group_message(
+                _team_registry.get_queue(team_id),
+                team_id,
+                speaker=target_agent,
+                text=answer[:400],
+            )
 
         # Record the result edge back to the parent.
         await session_store.add_link(

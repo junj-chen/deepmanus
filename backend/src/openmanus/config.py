@@ -52,7 +52,7 @@ class Settings(BaseSettings):
 
     # --- Agent behaviour -------------------------------------------------
     system_prompt: str = (
-        "You are deepopen, an AI coding agent operating in the user's project "
+        "You are manus, an AI coding agent operating in the user's project "
         "directory. Use the file system tools to read, edit, and run code. "
         "Be concise. Explain what you are about to do, then do it."
     )

@@ -5,9 +5,8 @@ import { rootStore } from "@/stores";
 /**
  * React binding for the mobx RootStore singleton.
  *
- * Components read state via `useStore()` and call store *actions*; the actual
- * chat message stream is rendered by CopilotKit's <CopilotChat>, while this
- * store holds the surrounding application state (sessions, ui, connection).
+ * Components read state via `useStore()` and call store *actions*; the chat
+ * message stream comes from AG-UI SSE via agentService -> ChatStore.
  */
 const StoreContext = createContext(rootStore);
 

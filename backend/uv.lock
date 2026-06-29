@@ -310,39 +310,6 @@ wheels = [
 ]
 
 [[package]]
-name = "deepopen"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "ag-ui-protocol" },
-    { name = "aiosqlite" },
-    { name = "deepagents" },
-    { name = "fastapi" },
-    { name = "langchain" },
-    { name = "langchain-openai" },
-    { name = "langgraph" },
-    { name = "langgraph-checkpoint-sqlite" },
-    { name = "pydantic-settings" },
-    { name = "python-dotenv" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "ag-ui-protocol", specifier = ">=0.1" },
-    { name = "aiosqlite", specifier = ">=0.22.1" },
-    { name = "deepagents", specifier = ">=0.1" },
-    { name = "fastapi", specifier = ">=0.115" },
-    { name = "langchain", specifier = ">=0.3" },
-    { name = "langchain-openai", specifier = ">=0.2" },
-    { name = "langgraph", specifier = ">=0.6" },
-    { name = "langgraph-checkpoint-sqlite", specifier = ">=2.0" },
-    { name = "pydantic-settings", specifier = ">=2.5" },
-    { name = "python-dotenv", specifier = ">=1.0" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
-]
-
-[[package]]
 name = "distro"
 version = "1.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -803,6 +770,39 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/49/f5/7c7cb955305cb41f7f3c5fd7e0e38bf6bbf2658468863d4b7b868a5cb8df/openai-2.44.0.tar.gz", hash = "sha256:68a5a5ffad82b8ff7d451c437529fb64f7c3b8123aaf0c021966a882d9e3947d", size = 988753, upload-time = "2026-06-24T20:56:02.293Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ae/f4/561ed79fd94876160018a5e75254cfcb9b0e62d4dded9dcb20072e86d623/openai-2.44.0-py3-none-any.whl", hash = "sha256:0a2a3ab2e29aeda368700f662ff9ba0f9df17ba4c54577a64e08b8115a3cc0ad", size = 1366216, upload-time = "2026-06-24T20:55:58.882Z" },
+]
+
+[[package]]
+name = "openmanus"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "ag-ui-protocol" },
+    { name = "aiosqlite" },
+    { name = "deepagents" },
+    { name = "fastapi" },
+    { name = "langchain" },
+    { name = "langchain-openai" },
+    { name = "langgraph" },
+    { name = "langgraph-checkpoint-sqlite" },
+    { name = "pydantic-settings" },
+    { name = "python-dotenv" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "ag-ui-protocol", specifier = ">=0.1" },
+    { name = "aiosqlite", specifier = ">=0.22.1" },
+    { name = "deepagents", specifier = ">=0.1" },
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "langchain", specifier = ">=0.3" },
+    { name = "langchain-openai", specifier = ">=0.2" },
+    { name = "langgraph", specifier = ">=0.6" },
+    { name = "langgraph-checkpoint-sqlite", specifier = ">=2.0" },
+    { name = "pydantic-settings", specifier = ">=2.5" },
+    { name = "python-dotenv", specifier = ">=1.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
 ]
 
 [[package]]

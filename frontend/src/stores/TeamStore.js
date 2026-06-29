@@ -22,9 +22,17 @@ export class TeamStore {
   status = "idle"; // idle | loading | running | done | error
   error = null;
   _sub = null; // current SSE subscription
+  // ref to SessionStore (injected by RootStore) so incoming group messages can
+  // bump the team's activity + unread. null until wired.
+  _sessions = null;
 
   constructor() {
     makeAutoObservable(this);
+  }
+
+  /** Injected by RootStore to avoid a circular import. */
+  setSessionStore(sessions) {
+    this._sessions = sessions;
   }
 
   /** Open a team: load history + subscribe to live stream. */
@@ -120,6 +128,18 @@ export class TeamStore {
         collapsed: msg.speaker !== "user",
         details: [],
       });
+      // a new group message arrived: bump the team's activity in the list.
+      // +1 unread only if the user isn't currently viewing this team.
+      // The message text becomes the list preview (2nd line).
+      if (this.activeTeamId && this._sessions) {
+        const isActive = this._sessions.activeId === this.activeTeamId;
+        const preview = (msg.content || "").replace(/\s+/g, " ").trim().slice(0, 80);
+        this._sessions.bumpActivity(this.activeTeamId, {
+          unread: isActive ? 0 : 1,
+          preview,
+          speaker: msg.speaker,
+        });
+      }
     });
   }
 

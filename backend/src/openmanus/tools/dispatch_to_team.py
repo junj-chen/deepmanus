@@ -61,12 +61,16 @@ def make_dispatch_to_team_tool(*, team_agent_ref: Any) -> BaseTool:
             (config or {}).get("configurable", {}).get("thread_id") or "unknown"
         )
 
-        # Create the team session.
+        # Create the team session. `members` lists the role seeds the team avatar
+        # shows (the fixed specialist roster: leader + the two sub-agent roles).
         team = await session_store.create(
             kind="team",
             name="teamleader",
             title=task_description[:60] or "team task",
-            metadata={"parent": default_session_id},
+            metadata={
+                "parent": default_session_id,
+                "members": ["teamleader", "researcher", "coder"],
+            },
         )
         team_id = team["id"]
         await session_store.update(team_id, status="running")

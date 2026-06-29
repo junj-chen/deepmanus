@@ -1,5 +1,5 @@
 /** @type {import('tailwindcss').Config} */
-// deepopen design system — quiet dark, cinematic minimal (omma.build-inspired).
+// openmanus design system — quiet dark, cinematic minimal (omma.build-inspired).
 // Theme tokens are CSS variables in src/index.css; this file houses the
 // content globs + dark mode + shadcn component registration.
 export default {

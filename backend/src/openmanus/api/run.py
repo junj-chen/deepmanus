@@ -102,14 +102,16 @@ async def run(
 
     async def stream():
         try:
-            await session_store.update(thread_id, status="active")
+            # "running" so the session list shows a spinner while the agent works;
+            # reset to "active" on completion so it stops spinning.
+            await session_store.update(thread_id, status="running")
             async for frame in bridge.run(
                 thread_id=thread_id, run_id=run_id, user_text=user_text
             ):
                 yield frame
         finally:
-            # mark session touched so it sorts to the top of the list
-            await session_store.update(thread_id, touch=True)
+            # mark done + touched so it sorts to the top of the list
+            await session_store.update(thread_id, status="active", touch=True)
 
     return StreamingResponse(
         stream(),

@@ -1,9 +1,9 @@
 """FastAPI application entrypoint.
 
-Mounts the AG-UI run endpoint (consumed by CopilotKit runtime's HttpAgent),
+Mounts the AG-UI run endpoint (POST /agents/main, a self-parsed SSE stream),
 the sessions API, and CORS. Run with:
 
-    uv run uvicorn deepopen.main:app --reload --port 8000
+    uv run uvicorn openmanus.main:app --reload --port 8000
 """
 
 from __future__ import annotations
@@ -37,13 +37,13 @@ from .agent_factory import build_agents
 from .api import run, sessions, teams
 from .api.sessions import workdir_router
 from .config import settings
-from .db import init_db
+from .db import init_db, session_store
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s | %(message)s",
 )
-logger = logging.getLogger("deepopen")
+logger = logging.getLogger("openmanus")
 
 
 @asynccontextmanager
@@ -52,16 +52,19 @@ async def lifespan(app: FastAPI):
     # request is fast and any config error surfaces now rather than
     # mid-conversation.
     await init_db()  # sessions + message_links tables
+    # Seed the singleton default entry session so the user lands on a
+    # ready-to-talk conversation the moment the app boots (idempotent).
+    await session_store.ensure_default()
     app.state.agent, app.state.teamleader = await build_agents()
     logger.info(
-        "deepopen ready | model=%s base=%s workdir=%s db=%s",
+        "openmanus ready | model=%s base=%s workdir=%s db=%s",
         settings.model, settings.openai_base_url, settings.workdir, settings.database_url,
     )
     yield
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="deepopen", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="openmanus", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,

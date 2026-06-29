@@ -14,7 +14,7 @@ from typing import Any
 
 from langchain_core.messages import AIMessageChunk, ToolMessage
 
-from deepopen.agui_bridge import AGUIBridge
+from openmanus.agui_bridge import AGUIBridge
 
 
 class FakeAgent:

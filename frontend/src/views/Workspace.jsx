@@ -9,8 +9,17 @@ import { ChatPane } from "@/views/ChatPane";
 import { Playground } from "@/views/Playground";
 
 // localStorage keys for persisted panel layouts (survive session switches).
-const LAYOUT_LEFT = "deepopen.layout.left"; // list | chat  (inside left half)
-const LAYOUT_MAIN = "deepopen.layout.main"; // leftHalf | rightHalf
+const LAYOUT_LEFT = "openmanus.layout.left"; // list | chat  (inside left half)
+const LAYOUT_MAIN = "openmanus.layout.main"; // leftHalf | rightHalf
+
+// one-time migration from the old "deepopen.*" namespace
+["deepopen.layout.left", "deepopen.layout.main"].forEach((oldK) => {
+  const newK = oldK.replace("deepopen", "openmanus");
+  if (localStorage.getItem(newK) == null) {
+    const v = localStorage.getItem(oldK);
+    if (v != null) localStorage.setItem(newK, v);
+  }
+});
 
 function loadLayout(key, fallback) {
   try {

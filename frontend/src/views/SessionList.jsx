@@ -1,137 +1,196 @@
 import { observer } from "mobx-react-lite";
 import { useEffect, useState } from "react";
-import { Plus, MessageSquare, Users, Trash2, Loader2 } from "lucide-react";
+import { Search, Trash2 } from "lucide-react";
 
 import { useStore } from "@/hooks/useStore";
+import { SessionAvatar } from "@/components/Avatar";
+import { formatListTime } from "@/utils/time";
 import { cn } from "@/lib/utils";
 
 /**
- * SessionList — left rail with "Running | History" tabs.
+ * SessionList — left rail, WeChat/Feishu style.
  *
- * - Running: sessions whose status is "running" (live teams / active work).
- * - History: everything else (past chats & finished teams).
- * Single-agent chats and teams are mixed within each tab, distinguished by a
- * small icon (chat bubble vs users) + a status dot.
+ * Each row is a 2-line card:
+ *   ┌─────────────────────────────────────┐
+ *   │ [avatar]  title            12:30 ●  │  ← title + time + status
+ *   │           preview text…     ⟳       │  ← last message preview + running
+ *   └─────────────────────────────────────┘
+ *
+ * Avatars: single face for root/subagent (DiceBear, stable per id/role),
+ * overlapping faces for a team. A top search box filters by title + preview.
+ * Running sessions show a spinner; unread shows a red badge.
  */
 export const SessionList = observer(function SessionList() {
   const { sessions } = useStore();
-  const [creating, setCreating] = useState(false);
-  const [tab, setTab] = useState("running");
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     sessions.load();
   }, [sessions]);
 
-  const handleNew = async () => {
-    setCreating(true);
-    try {
-      await sessions.create();
-    } finally {
-      setCreating(false);
-    }
+  // filter both groups by the search query (title + preview)
+  const match = (s) => {
+    if (!query.trim()) return true;
+    const q = query.trim().toLowerCase();
+    return (
+      (s.title || "").toLowerCase().includes(q) ||
+      (s.metadata?.preview || "").toLowerCase().includes(q)
+    );
   };
-
-  const running = sessions.sessions.filter((s) => s.status === "running");
-  const history = sessions.sessions.filter((s) => s.status !== "running");
-  const list = tab === "running" ? running : history;
+  const roots = sessions.rootSessions.filter(match);
+  const tasks = sessions.taskSessions.filter(match);
 
   return (
     <div className="flex h-full flex-col bg-card">
-      {/* New chat */}
+      {/* search */}
       <div className="px-2.5 pb-2 pt-3">
-        <button
-          onClick={handleNew}
-          disabled={creating}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-border/60 py-1.5 text-[13px] text-foreground/80 transition hover:border-accent/40 hover:text-foreground disabled:opacity-50"
-        >
-          <Plus className="size-3.5 text-accent" />
-          New chat
-        </button>
-      </div>
-
-      {/* Running | History tabs */}
-      <div className="flex gap-1 px-2.5 pb-2">
-        {[
-          { key: "running", label: "Running", count: running.length },
-          { key: "history", label: "History", count: history.length },
-        ].map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={cn(
-              "flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition",
-              tab === t.key
-                ? "bg-sidebar text-foreground"
-                : "text-muted-foreground hover:text-foreground/70",
-            )}
-          >
-            {t.label}
-            {t.count > 0 && (
-              <span className="text-[9px] text-muted-foreground/60">{t.count}</span>
-            )}
-          </button>
-        ))}
+        <div className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-background/50 px-2.5 py-1.5 transition focus-within:border-accent/40">
+          <Search className="size-3.5 shrink-0 text-muted-foreground/60" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search conversations"
+            className="w-full bg-transparent text-[12px] text-foreground outline-none placeholder:text-muted-foreground/50"
+          />
+        </div>
       </div>
 
       {/* list */}
-      <div className="flex-1 overflow-y-auto px-2 pb-3">
+      <div className="flex-1 overflow-y-auto px-1.5 pb-3">
         {sessions.loading && (
           <p className="px-2.5 py-3 text-xs text-muted-foreground">Loading…</p>
         )}
         {sessions.error && (
           <p className="px-2.5 py-2 text-xs text-destructive">{sessions.error}</p>
         )}
-        {!sessions.loading && list.length === 0 && (
-          <p className="px-2.5 py-6 text-center text-xs text-muted-foreground">
-            {tab === "running" ? "No active sessions." : "No history yet."}
-          </p>
-        )}
 
-        <ul className="space-y-0.5">
-          {list.map((s) => (
-            <SessionItem
-              key={s.id}
-              session={s}
-              active={s.id === sessions.activeId}
-              onSelect={() => sessions.select(s.id)}
-              onDelete={() => sessions.remove(s.id)}
-            />
-          ))}
-        </ul>
+        {!sessions.loading && (
+          <>
+            {/* DEFAULT group — the entry agent(s) */}
+            <Section
+              title="Default"
+              empty={roots.length === 0}
+              emptyHint={query.trim() ? "No matches." : undefined}
+            >
+              <ul className="space-y-0.5">
+                {roots.map((s) => (
+                  <SessionItem
+                    key={s.id}
+                    session={s}
+                    unread={sessions.unreadCount(s.id)}
+                    active={s.id === sessions.activeId}
+                    onSelect={() => sessions.select(s.id)}
+                    onDelete={() => sessions.remove(s.id)}
+                  />
+                ))}
+              </ul>
+            </Section>
+
+            {/* TASKS & TEAMS group — derived team/subagent work */}
+            <Section
+              title="Tasks & Teams"
+              empty={tasks.length === 0}
+              emptyHint={query.trim() ? "No matches." : "No tasks yet."}
+            >
+              <ul className="space-y-0.5">
+                {tasks.map((s) => (
+                  <SessionItem
+                    key={s.id}
+                    session={s}
+                    unread={sessions.unreadCount(s.id)}
+                    active={s.id === sessions.activeId}
+                    onSelect={() => sessions.select(s.id)}
+                    onDelete={() => sessions.remove(s.id)}
+                  />
+                ))}
+              </ul>
+            </Section>
+          </>
+        )}
       </div>
     </div>
   );
 });
 
-function SessionItem({ session, active, onSelect, onDelete }) {
+/** A titled group section; renders nothing visually when there's no content. */
+function Section({ title, children, empty, emptyHint }) {
+  if (empty && !emptyHint) return null; // hide empty groups with no hint
+  return (
+    <div className="mb-1">
+      <h3 className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+        {title}
+      </h3>
+      {empty ? (
+        <p className="px-2.5 pb-2 text-[11px] text-muted-foreground/50">
+          {emptyHint}
+        </p>
+      ) : (
+        children
+      )}
+    </div>
+  );
+}
+
+function SessionItem({ session, unread, active, onSelect, onDelete }) {
   const isTeam = session.kind === "team";
   const isRunning = session.status === "running";
+  const preview = session.metadata?.preview || "";
+
   return (
     <li>
       <button
         onClick={onSelect}
         className={cn(
-          "group relative flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] transition",
+          "group relative flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left transition",
           active
             ? "bg-sidebar text-foreground"
             : "text-muted-foreground hover:bg-sidebar/50 hover:text-foreground/80",
         )}
       >
         {active && (
-          <span className="absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-full bg-accent" />
+          <span className="absolute left-0 top-1/2 h-7 w-[2px] -translate-y-1/2 rounded-full bg-accent" />
         )}
-        {isRunning ? (
-          <Loader2 className="size-3.5 shrink-0 animate-spin text-accent" />
-        ) : isTeam ? (
-          <Users className="size-3.5 shrink-0 text-accent/60" />
-        ) : (
-          <MessageSquare className="size-3.5 shrink-0 text-muted-foreground/60" />
-        )}
-        <span className="flex-1 truncate">
-          {session.title || session.id.slice(0, 12)}
-        </span>
+
+        {/* avatar with a live "pulse" dot when the agent is working */}
+        <div className="relative mt-0.5">
+          <SessionAvatar session={session} size={36} />
+          {isRunning && (
+            <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full bg-accent ring-2 ring-card animate-pulse-dot" />
+          )}
+        </div>
+
+        {/* two-line content */}
+        <div className="min-w-0 flex-1">
+          {/* line 1: title + time (the running state shows as a pulse on the avatar) */}
+          <div className="flex items-center gap-1.5">
+            <span className="flex-1 truncate text-[13px] font-medium text-foreground">
+              {session.title || session.id.slice(0, 12)}
+            </span>
+            <span className="shrink-0 text-[10px] text-muted-foreground/60">
+              {formatListTime(session.updated_at || session.created_at)}
+            </span>
+          </div>
+
+          {/* line 2: preview + badges */}
+          <div className="mt-0.5 flex items-center gap-1.5">
+            <span className="flex-1 truncate text-[11px] text-muted-foreground">
+              {preview || (isTeam ? "Team session" : "Start a conversation")}
+            </span>
+            {isTeam && (
+              <span className="shrink-0 rounded-sm bg-accent/15 px-1 text-[9px] font-medium leading-tight text-accent">
+                team
+              </span>
+            )}
+            {unread > 0 && (
+              <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-destructive text-[9px] font-medium text-destructive-foreground ring-2 ring-card">
+                {unread > 9 ? "9+" : unread}
+              </span>
+            )}
+          </div>
+        </div>
+
         <Trash2
-          className="size-3 shrink-0 opacity-0 transition group-hover:opacity-60 hover:!opacity-100 hover:text-destructive"
+          className="size-3 shrink-0 self-center opacity-0 transition group-hover:opacity-60 hover:!opacity-100 hover:text-destructive"
           onClick={(e) => {
             e.stopPropagation();
             onDelete();

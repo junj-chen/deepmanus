@@ -56,7 +56,7 @@ export function Playground() {
               className={cn(
                 "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] transition",
                 isOpen
-                  ? "bg-background/70 text-foreground"
+                  ? "bg-accent/15 text-accent"
                   : "text-muted-foreground/60 hover:text-foreground/70",
               )}
               title={isOpen ? `Close ${def.label}` : `Open ${def.label}`}
@@ -139,7 +139,7 @@ function SandboxView() {
     <div className="h-full overflow-y-auto bg-sidebar p-3">
       <pre className="font-mono text-[11px] leading-relaxed text-muted-foreground">
 {`📁 backend/
-   📁 src/deepopen/
+   📁 src/openmanus/
    📁 tests/
    📄 pyproject.toml
 📁 runtime/

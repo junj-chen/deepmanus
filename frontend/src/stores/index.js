@@ -18,6 +18,11 @@ export class RootStore {
     this.chat = new ChatStore();
     this.sessions = new SessionStore();
     this.team = new TeamStore();
+    // wire cross-store refs so an agent turn finishing (chat) or a team group
+    // message arriving (team) can bump the session's activity + unread in the
+    // session list, without circular imports between the store modules.
+    this.chat.setSessionStore(this.sessions);
+    this.team.setSessionStore(this.sessions);
   }
 }
 

@@ -22,18 +22,52 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph.state import CompiledStateGraph
 
 from .config import settings
+from .middleware.tool_guard import ToolGuardMiddleware
 from .store import get_checkpointer
-from .tools import make_dispatch_task_tool, make_dispatch_to_team_tool
+from .tools import (
+    make_dispatch_single_tool,
+    make_dispatch_task_tool,
+    make_dispatch_to_team_tool,
+)
+
+# Tools the DEFAULT entry agent must NOT see: it is a pure router + read-only
+# chat. Writing/editing/executing is the sub-agents' job. `task` is deepagents'
+# built-in subagent-dispatch tool — it would let the agent spawn its own
+# sub-tasks and BYPASS our dispatch_single/dispatch_to_team routing, so it's
+# stripped too. All stripped at BOTH the model-request layer (so the model
+# doesn't see them) AND the tool-execution layer (so even a hallucinated call
+# is rejected) via ToolGuardMiddleware.
+DEFAULT_EXCLUDED_TOOLS = frozenset(
+    {"write_file", "edit_file", "execute", "write_todos", "task"}
+)
+
+# The teamleader also must not use deepagents' built-in `task` tool — its only
+# delegation path is our `dispatch_task` (which we track as sessions). File
+# tools stay (the teamleader may inspect files), but `task` is blocked.
+TEAMLEADER_EXCLUDED_TOOLS = frozenset({"task"})
 
 DEFAULT_PROMPT = f"""{settings.system_prompt}
 
-You are the DEFAULT entry agent. The user talks to you first.
-- For simple, quick tasks (answer a question, read/edit one file), just do it
-  yourself with the file system tools.
-- For LARGER or multi-step tasks that benefit from a team of specialists, use
-  the `dispatch_to_team` tool to hand the task off to a background team. It
-  returns immediately; tell the user they can open the team chat in the
-  sidebar to watch progress.
+You are the DEFAULT entry agent — a ROUTER. You never do specialist work and you
+never plan or break down tasks. Decide, in ONE short sentence, which lane a
+request belongs to, then hand it off:
+
+1. CASUAL CHAT / simple questions (greetings, explaining a concept, "what files
+   are here"): answer yourself, using only read-only tools (ls, read_file, grep,
+   glob). NEVER write/edit/execute.
+
+2. A SINGLE clear specialist task ("implement X", "fix this file", "investigate
+   Y"): call `dispatch_single` with target_agent="coder" or "researcher".
+
+3. ANYTHING ELSE (multi-step, needs coordination, "use a team", "research then
+   build", ambiguous scope): call `dispatch_to_team` and pass the user's request
+   VERBATIM as task_description. Do NOT decompose it, do NOT assign roles, do NOT
+   describe phases — deciding how to split the work and whom to involve is the
+   team leader's job, not yours.
+
+CRITICAL: When you choose lane 2 or 3, your reply must be ONE line stating you
+handed it off (e.g. "Delegating to a coder." / "Starting a team."). Do NOT
+restate the task, do NOT outline steps, do NOT mention what each member will do.
 """
 
 
@@ -105,20 +139,33 @@ async def _build_default_agent(
         tools=[dispatch_task_tool],
         backend=backend,
         checkpointer=checkpointer,
-        name="deepopen-teamleader",
+        middleware=[ToolGuardMiddleware(excluded=TEAMLEADER_EXCLUDED_TOOLS)],
+        name="openmanus-teamleader",
     )
     team_agent_ref["agent"] = teamleader
 
-    # default (entry agent, delegates to teams)
+    # default (entry router). It delegates to a SINGLE specialist via
+    # dispatch_single (running the sub-agent on a graph with FULL tools) or to
+    # a TEAM via dispatch_to_team. The sub-agent runs on the TEAMLEADER's graph
+    # (unrestricted filesystem + dispatch_task), NOT the default's own graph —
+    # because the default's write/execute tools are stripped by the exclusion
+    # middleware, so a coder couldn't do its job on the default graph.
+    default_agent_ref: dict = {}
+    dispatch_single_tool = make_dispatch_single_tool(agent_ref=team_agent_ref)
     dispatch_to_team_tool = make_dispatch_to_team_tool(team_agent_ref=teamleader)
     default_agent = create_deep_agent(
         model=model,
         system_prompt=DEFAULT_PROMPT,
-        tools=[dispatch_to_team_tool],
+        tools=[dispatch_single_tool, dispatch_to_team_tool],
         backend=backend,
         checkpointer=checkpointer,
-        name="deepopen-default",
+        # Strip write/execute tools so the router physically cannot do the
+        # specialist work itself — it must delegate. (Guarded at both the
+        # model-request and tool-execution layers.)
+        middleware=[ToolGuardMiddleware(excluded=DEFAULT_EXCLUDED_TOOLS)],
+        name="openmanus-default",
     )
+    default_agent_ref["agent"] = default_agent
     return default_agent
 
 
@@ -169,20 +216,31 @@ async def build_agents() -> tuple[CompiledStateGraph, CompiledStateGraph]:
         tools=[dispatch_task_tool],
         backend=_build_backend(settings.workdir),
         checkpointer=checkpointer,
-        name="deepopen-teamleader",
+        middleware=[ToolGuardMiddleware(excluded=TEAMLEADER_EXCLUDED_TOOLS)],
+        name="openmanus-teamleader",
     )
     team_agent_ref["agent"] = teamleader
 
-    # default: entry agent, delegates to teams via dispatch_to_team ------
+    # default: entry router — delegates to a single specialist (dispatch_single,
+    # run on the TEAMLEADER's unrestricted graph) or a team (dispatch_to_team).
+    # The default's own write/execute tools are stripped, so sub-agents must run
+    # on a graph that still has them (the teamleader).
+    default_agent_ref: dict = {}
+    dispatch_single_tool = make_dispatch_single_tool(agent_ref=team_agent_ref)
     dispatch_to_team_tool = make_dispatch_to_team_tool(team_agent_ref=teamleader)
     default_agent = create_deep_agent(
         model=model,
         system_prompt=DEFAULT_PROMPT,
-        tools=[dispatch_to_team_tool],
+        tools=[dispatch_single_tool, dispatch_to_team_tool],
         backend=_build_backend(settings.workdir),
         checkpointer=checkpointer,
-        name="deepopen-default",
+        # Strip write/execute tools so the router physically cannot do the
+        # specialist work itself — it must delegate. (Guarded at both the
+        # model-request and tool-execution layers.)
+        middleware=[ToolGuardMiddleware(excluded=DEFAULT_EXCLUDED_TOOLS)],
+        name="openmanus-default",
     )
+    default_agent_ref["agent"] = default_agent
 
     # warm the cache for the default workdir (store the default agent)
     _agent_cache[settings.workdir] = default_agent

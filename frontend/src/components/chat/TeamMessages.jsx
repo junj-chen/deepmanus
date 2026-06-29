@@ -1,44 +1,68 @@
+import { useEffect, useRef } from "react";
 import { observer } from "mobx-react-lite";
-import { Bot, User, Wrench, ChevronDown, ChevronRight } from "lucide-react";
+import { Wrench, ChevronDown, ChevronRight } from "lucide-react";
 
+import { Avatar } from "@/components/Avatar";
 import { cn } from "@/lib/utils";
 
 /**
  * TeamMessages — group-chat rendering for a team session.
  *
- * Each message shows a speaker avatar (coloured by role) + name + the bubble.
- * Sub-agent (non-user, non-system) messages collapse to a summary line by
- * default; click to expand full text + any tool-call details.
+ * Each message shows a speaker's DiceBear face + role-coloured name + the
+ * bubble. Sub-agent (non-user, non-system) messages collapse to a summary line
+ * by default; click to expand full text + tool-call details.
  *
- * Reads from TeamStore.messages via props.
+ * Avatars match the rest of the app (DiceBear adventurer), seeded by speaker
+ * name so each role has a stable face. The container auto-scrolls to the bottom
+ * unless the user scrolled up to read history.
  */
 
-// Role → avatar style + label.
+// Role → display label + colour class (text-role-* are defined in index.css).
 const ROLES = {
-  teamleader: { icon: Bot, dot: "dot-teamleader", tint: "text-role-teamleader" },
-  researcher: { icon: Bot, dot: "dot-researcher", tint: "text-role-researcher" },
-  coder: { icon: Bot, dot: "dot-coder", tint: "text-role-coder" },
-  user: { icon: User, dot: "dot-user", tint: "text-role-user" },
-  system: { icon: Wrench, dot: "dot-system", tint: "text-role-system" },
+  teamleader: { label: "Team Leader", tint: "text-role-teamleader" },
+  researcher: { label: "Researcher", tint: "text-role-researcher" },
+  coder: { label: "Coder", tint: "text-role-coder" },
+  user: { label: "you", tint: "text-role-user" },
+  system: { label: "system", tint: "text-role-system" },
 };
 
 function roleCfg(speaker) {
-  return ROLES[speaker] || { icon: Bot, dot: "dot-user", tint: "text-muted-foreground" };
+  return ROLES[speaker] || { label: speaker || "agent", tint: "text-muted-foreground" };
 }
 
 export const TeamMessages = observer(function TeamMessages({ messages, onToggle }) {
+  const scrollRef = useRef(null);
+  const stickToBottom = useRef(true);
+
+  // fingerprint: changes when messages change → drives auto-scroll
+  const last = messages?.[messages.length - 1];
+  const fingerprint = `${messages?.length || 0}:${last?.text?.length ?? 0}:${last?.speaker ?? ""}`;
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && stickToBottom.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [fingerprint]);
+
   if (!messages || messages.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center px-6">
-        <p className="text-sm text-muted-foreground">
-          Team is starting…
-        </p>
+        <p className="text-sm text-muted-foreground">Team is starting…</p>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div
+      ref={scrollRef}
+      className="flex-1 overflow-y-auto"
+      onScroll={(e) => {
+        const el = e.currentTarget;
+        stickToBottom.current =
+          el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+      }}
+    >
       <div className="content-narrow px-2 py-4">
         {messages.map((m) => (
           <TeamBubble key={m.id} msg={m} onToggle={onToggle} />
@@ -50,28 +74,29 @@ export const TeamMessages = observer(function TeamMessages({ messages, onToggle 
 
 function TeamBubble({ msg, onToggle }) {
   const cfg = roleCfg(msg.speaker);
-  const Icon = cfg.icon;
   const isUser = msg.speaker === "user";
+  const isSystem = msg.speaker === "system";
   const isMention = msg.direction === "mention";
   const hasDetails = (msg.details?.length || 0) > 0;
 
   return (
     <div className="anim-rise mb-4 flex gap-3">
-      {/* avatar */}
-      <div
-        className={cn(
-          "mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full",
-          isUser ? "bg-muted-foreground/25" : "bg-card",
+      {/* DiceBear avatar seeded by speaker name (stable per role) */}
+      <div className="mt-0.5 shrink-0">
+        {isUser ? (
+          <div className="flex size-7 items-center justify-center rounded-full bg-muted-foreground/25 text-xs text-foreground">
+            you
+          </div>
+        ) : (
+          <Avatar seed={msg.speaker || "agent"} size={28} />
         )}
-      >
-        <Icon className={cn("size-4", cfg.tint)} />
       </div>
 
       <div className="min-w-0 flex-1">
         {/* name row */}
         <div className="mb-1 flex items-center gap-1.5">
           <span className={cn("text-[11px] font-medium", cfg.tint)}>
-            {msg.speaker}
+            {cfg.label}
           </span>
           {isMention && (
             <span className="rounded-sm bg-accent/10 px-1 text-[10px] text-accent">
@@ -93,10 +118,11 @@ function TeamBubble({ msg, onToggle }) {
           )}
         </div>
 
-        {/* text body (collapsed → single line clamp) */}
+        {/* text body (collapsed → single line clamp; system → muted) */}
         <p
           className={cn(
-            "whitespace-pre-wrap break-words text-[14px] leading-relaxed text-foreground/90",
+            "whitespace-pre-wrap break-words text-[14px] leading-relaxed",
+            isSystem ? "text-muted-foreground" : "text-foreground",
             msg.collapsed ? "line-clamp-2" : "",
           )}
         >

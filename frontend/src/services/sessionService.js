@@ -39,6 +39,33 @@ export async function updateSession(id, { title, status } = {}) {
   return res.json();
 }
 
+/**
+ * Set the session's last-message preview (shown as the 2nd line in the list).
+ * Merged into metadata server-side (existing metadata preserved).
+ */
+export async function setPreview(id, preview, speaker) {
+  const res = await fetch(`/sessions/${encodeURIComponent(id)}/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ preview, speaker }),
+  });
+  if (!res.ok) throw new Error(`setPreview: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Reset a session's conversation history (clear its checkpointer thread).
+ * The session row stays — only its message history is wiped. Used by the
+ * default entry's "new chat".
+ */
+export async function resetHistory(id) {
+  const res = await fetch(`/sessions/${encodeURIComponent(id)}/reset`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error(`resetHistory: ${res.status}`);
+  return res.json();
+}
+
 /** Delete a session. */
 export async function deleteSession(id) {
   const res = await fetch(`/sessions/${encodeURIComponent(id)}`, {

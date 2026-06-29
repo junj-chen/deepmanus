@@ -1,5 +1,5 @@
 [project]
-name = "deepopen"
+name = "openmanus"
 version = "0.1.0"
 description = "opencode clone backend: deepagents + AG-UI endpoint for CopilotKit"
 readme = "README.md"
@@ -26,4 +26,4 @@ build-backend = "uv_build"
 package = true
 
 [tool.uv.build-backend]
-module-name = "deepopen"
+module-name = "openmanus"

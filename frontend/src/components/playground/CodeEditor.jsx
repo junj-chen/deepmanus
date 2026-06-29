@@ -1,13 +1,13 @@
 import { Highlight, themes } from "prism-react-renderer";
 
 // Static sample content for the placeholder IDE tab.
-const SAMPLE = `# deepopen playground — code editor (placeholder)
+const SAMPLE = `# manus playground — code editor (placeholder)
 #
 # This surface will be driven by agents (via CopilotKit frontendTool):
 # a "coder" sub-agent writes/edits files here, and you watch it live.
 
 def greet(name: str) -> str:
-    return f"Hello, {name}! I'm deepopen."
+    return f"Hello, {name}! I'm manus."
 
 
 if __name__ == "__main__":
@@ -23,7 +23,7 @@ if __name__ == "__main__":
  */
 export function CodeEditor() {
   return (
-    <div className="h-full overflow-auto bg-[#0d0d0f] p-3 font-mono text-[12px] leading-relaxed">
+    <div className="h-full overflow-auto bg-background p-3 font-mono text-[12px] leading-relaxed">
       <Highlight theme={themes.vsDark} code={SAMPLE.trim()} language="python">
         {({ className, style, tokens, getLineProps, getTokenProps }) => (
           <pre className={className} style={{ ...style, background: "transparent" }}>
