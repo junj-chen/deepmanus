@@ -47,7 +47,7 @@ class Settings(BaseSettings):
 
     # --- Server ----------------------------------------------------------
     host: str = "127.0.0.1"
-    port: int = 8000
+    port: int = 8999
     cors_origins: str = "*"
 
     # --- Agent behaviour -------------------------------------------------

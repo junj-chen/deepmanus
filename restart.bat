@@ -19,15 +19,15 @@ REM Kill any running processes. Ignore errors (process may not exist).
 taskkill /F /IM python.exe >nul 2>&1
 taskkill /F /IM node.exe >nul 2>&1
 
-REM Give the OS a moment to free ports :8000 / :5173.
+REM Give the OS a moment to free ports :8999 / :5173.
 timeout /t 2 /nobreak >nul
 
 echo [deepmanus] starting services fresh...
 echo.
 
-REM --- 1. backend (Python, :8000) ---
+REM --- 1. backend (Python, :8999) ---
 echo [deepmanus] starting backend  (logs: .logs\backend.log)
-start "deepmanus-backend" /D "%ROOT%backend" cmd /c "uv run uvicorn openmanus.main:app --port 8000 > %LOGDIR%\backend.log 2>&1"
+start "deepmanus-backend" /D "%ROOT%backend" cmd /c "uv run uvicorn openmanus.main:app --port 8999 > %LOGDIR%\backend.log 2>&1"
 
 REM --- 2. frontend (vite, :5173) ---
 timeout /t 2 /nobreak >nul
@@ -37,7 +37,7 @@ start "deepmanus-frontend" /D "%ROOT%frontend" cmd /c "yarn dev > %LOGDIR%\front
 echo.
 echo [deepmanus] all services starting.
 echo    frontend: http://localhost:5173
-echo    backend:  http://localhost:8000/agents/main/health
+echo    backend:  http://localhost:8999/agents/main/health
 echo    (close the 2 popup windows to stop each service)
 echo.
 

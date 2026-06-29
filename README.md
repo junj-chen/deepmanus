@@ -16,7 +16,7 @@ Two services, talking over the AG-UI protocol (Server-Sent Events):
         │                                            │
         │  POST /agents/main  (AG-UI SSE)            │
         └───────────────────────────────────────────►┘
-            (vite dev proxy → :8000)
+            (vite dev proxy → :8999)
 ```
 
 - **② Backend (`backend/`)** — `deepagents` agent with an OpenAI/Anthropic-
@@ -62,9 +62,9 @@ restart.bat
 …or run them manually in two terminals:
 
 ```bash
-# terminal 1 — Python backend (port 8000)
+# terminal 1 — Python backend (port 8999)
 cd backend
-uv run uvicorn openmanus.main:app --reload --port 8000
+uv run uvicorn openmanus.main:app --reload --port 8999
 
 # terminal 2 — frontend (port 5173)
 cd frontend

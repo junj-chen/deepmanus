@@ -3,7 +3,7 @@
 Mounts the AG-UI run endpoint (POST /agents/main, a self-parsed SSE stream),
 the sessions API, and CORS. Run with:
 
-    uv run uvicorn openmanus.main:app --reload --port 8000
+    uv run uvicorn openmanus.main:app --reload --port 8999
 """
 
 from __future__ import annotations

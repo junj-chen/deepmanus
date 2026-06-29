@@ -21,26 +21,22 @@ export default defineConfig({
     proxy: {
       // AG-UI agent run endpoint (POST -> SSE stream of AG-UI events).
       '/agents': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://127.0.0.1:8999',
         changeOrigin: true,
       },
       // Sessions API (mobx SessionStore CRUD).
       '/sessions': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://127.0.0.1:8999',
         changeOrigin: true,
       },
       // Team group-chat API (SSE stream + messages).
       '/teams': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://127.0.0.1:8999',
         changeOrigin: true,
       },
       // Workdir validation + misc.
       '/workdir': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-      },
-      '/health': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://127.0.0.1:8999',
         changeOrigin: true,
       },
     },
