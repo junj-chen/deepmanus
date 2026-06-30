@@ -18,6 +18,7 @@ async/non-blocking dispatch is a later phase.
 from __future__ import annotations
 
 import logging
+import uuid
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -65,15 +66,20 @@ async def _run_subagent(
     task_description: str,
     child_session_id: str,
     parent_config: dict[str, Any],
+    on_text_delta=None,
 ) -> str:
     """Run the sub-agent on an isolated thread; return its final text answer.
+
+    Streams the agent's text deltas via ``on_text_delta(delta)`` when provided
+    (used to surface a sub-agent's live output into the team group chat). Uses
+    astream so the sub-agent's checkpointer thread fills in AND tokens can be
+    forwarded live, instead of ainvoke which blocks until done with no output.
 
     We reuse the SAME compiled agent graph (it already has the right model +
     backend) but override its tools via the role's allow-list and run it on a
     fresh thread (the child session id) so its history is isolated.
     """
-    # Build a minimal message + config: new thread = isolated history.
-    from langchain_core.messages import HumanMessage
+    from langchain_core.messages import AIMessageChunk, HumanMessage
 
     # Override system prompt + tools for this role by invoking with a role tag
     # prepended to the task. (A full per-role agent rebuild is a later
@@ -88,13 +94,36 @@ async def _run_subagent(
         },
     }
 
-    result = await agent.ainvoke(
-        {"messages": [HumanMessage(content=prompt)]},
-        config=config,
-    )
-    messages = result.get("messages", []) if isinstance(result, dict) else []
-    # last AI message content = the sub-agent's answer
-    for msg in reversed(messages):
+    # Run streaming so tokens can be forwarded live (and the checkpointer fills).
+    # We only extract TEXT deltas here (tool calls inside the sub-agent are not
+    # surfaced to the team chat — that would be too noisy; the final answer is).
+    from ..agui_bridge import _extract_text
+
+    try:
+        async for chunk in agent.astream(
+            {"messages": [HumanMessage(content=prompt)]},
+            config=config,
+            stream_mode=["messages", "updates"],
+            subgraphs=True,
+            version="v2",
+        ):
+            ctype = chunk.get("type")
+            if ctype != "messages":
+                continue
+            data = chunk.get("data")
+            if not (isinstance(data, tuple) and len(data) == 2):
+                continue
+            msg, _meta = data
+            if isinstance(msg, AIMessageChunk):
+                for text in _extract_text(msg.content):
+                    if text and on_text_delta:
+                        await on_text_delta(text)
+    except Exception:
+        logger.exception("sub-agent streaming failed; falling back to state read")
+
+    # Pull the final assistant text from the now-populated checkpointer state.
+    snapshot = await agent.aget_state(config)
+    for msg in reversed(getattr(snapshot, "values", {}).get("messages", [])):
         if getattr(msg, "type", "") == "ai":
             content = getattr(msg, "content", "")
             if isinstance(content, list):
@@ -172,7 +201,12 @@ def make_dispatch_task_tool(
         # surface the sub-agent's work in the team group chat so the user can
         # watch "researcher started → coder started" as it happens. Lazily import
         # team_runner to avoid a circular import at module load.
-        from ..team_runner import teams as _team_registry, _push_group_message
+        from ..team_runner import (
+            _push_group_close,
+            _push_group_delta,
+            _push_group_open,
+            teams as _team_registry,
+        )
 
         parent_row = await session_store.get(parent_session_id)
         team_id = (
@@ -182,13 +216,23 @@ def make_dispatch_task_tool(
         )
         in_team = team_id and _team_registry.has(team_id)
 
+        # For the team group chat we open a STREAMING message (stable id) and
+        # forward the sub-agent's text tokens live, so the user watches the
+        # specialist work instead of staring at a blank chat.
+        stream_msg_id = uuid.uuid4().hex
         if in_team:
-            await _push_group_message(
-                _team_registry.get_queue(team_id),
+            queue = _team_registry.get_queue(team_id)
+            await _push_group_open(
+                queue,
                 team_id,
+                msg_id=stream_msg_id,
                 speaker=target_agent,
                 text=f"▶ 开始执行: {task_description[:100]}",
             )
+
+        async def _on_delta(delta: str) -> None:
+            if in_team:
+                await _push_group_delta(queue, msg_id=stream_msg_id, delta=delta)
 
         # Record the delegation edge.
         await session_store.add_link(
@@ -207,6 +251,7 @@ def make_dispatch_task_tool(
                 task_description=task_description,
                 child_session_id=child_id,
                 parent_config=parent_config,
+                on_text_delta=_on_delta,
             )
             await session_store.update(child_id, status="done")
         except Exception as exc:  # noqa: BLE001
@@ -214,13 +259,16 @@ def make_dispatch_task_tool(
             await session_store.update(child_id, status="error")
             answer = f"(sub-agent '{target_agent}' failed: {exc})"
 
-        # Surface the sub-agent's result in the team group chat too.
+        # Finalize the streaming group message with the full answer (also
+        # persists one message_links record). Falls back to a plain message if
+        # somehow not in a team.
         if in_team:
-            await _push_group_message(
-                _team_registry.get_queue(team_id),
+            await _push_group_close(
+                queue,
                 team_id,
+                msg_id=stream_msg_id,
                 speaker=target_agent,
-                text=answer[:400],
+                text=answer[:400] or "(no output)",
             )
 
         # Record the result edge back to the parent.

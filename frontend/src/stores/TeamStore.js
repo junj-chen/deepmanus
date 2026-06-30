@@ -120,16 +120,44 @@ export class TeamStore {
 
   _appendGroup(msg) {
     runInAction(() => {
-      this.messages.push({
-        id: msg.messageId || `g-${Date.now()}`,
-        speaker: msg.speaker || "agent",
-        text: msg.content || "",
-        direction: msg.direction || "chat",
-        collapsed: msg.speaker !== "user",
-        details: [],
-      });
-      // a new group message arrived: bump the team's activity in the list.
-      // +1 unread only if the user isn't currently viewing this team.
+      const id = msg.messageId || `g-${Date.now()}`;
+      const existing = this.messages.find((m) => m.id === id);
+
+      // STREAMING DELTA: append text to an existing streaming message
+      // (mirrors AG-UI TEXT_MESSAGE_CONTENT under a stable messageId). Uses
+      // immutable replacement so mobx observers re-render on each token.
+      if (msg.delta != null) {
+        if (existing) {
+          const i = this.messages.indexOf(existing);
+          this.messages[i] = { ...existing, text: existing.text + msg.delta };
+        }
+        return; // a delta never bumps activity/preview (too high frequency)
+      }
+
+      // CLOSE / overwrite: replace an existing streaming message with the
+      // final full text (no duplicate bubble).
+      if (existing && msg.content != null) {
+        const i = this.messages.indexOf(existing);
+        this.messages[i] = {
+          ...existing,
+          text: msg.content,
+          streaming: false,
+        };
+      } else {
+        // NEW message (or open of a stream).
+        this.messages.push({
+          id,
+          speaker: msg.speaker || "agent",
+          text: msg.content || "",
+          direction: msg.direction || "chat",
+          collapsed: msg.speaker !== "user",
+          streaming: !!msg.streaming,
+          details: [],
+        });
+      }
+
+      // a (non-delta) group message arrived: bump the team's activity in the
+      // list. +1 unread only if the user isn't currently viewing this team.
       // The message text becomes the list preview (2nd line).
       if (this.activeTeamId && this._sessions) {
         const isActive = this._sessions.activeId === this.activeTeamId;

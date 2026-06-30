@@ -19,6 +19,7 @@ Key invariants:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import uuid
 from typing import Any
@@ -162,8 +163,6 @@ async def _push_group_message(
     )
     # SSE frame: a CUSTOM group-message event (speaker + content) the frontend
     # renders as a distinct chat bubble. (Not standard AG-UI, but our own.)
-    import json
-
     payload = {
         "type": "GROUP_MESSAGE",
         "messageId": msg_id,
@@ -172,6 +171,55 @@ async def _push_group_message(
     }
     frame = f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
     await queue.put(frame)
+
+
+# --- streaming group-message helpers (for live sub-agent token streaming) ---
+# These let a sub-agent's text flow into the team chat token-by-token under a
+# STABLE messageId, mirring the AG-UI TEXT_MESSAGE_START/CONTENT pattern but
+# inside our GROUP_MESSAGE envelope so each bubble carries the right speaker.
+# Flow: open(streaming:true) → many delta → close(final content, persisted).
+
+async def _push_group_open(
+    queue: asyncio.Queue, team_id: str, *, msg_id: str, speaker: str, text: str = ""
+) -> None:
+    """Open a streaming group message (no message_links write yet)."""
+    payload = {
+        "type": "GROUP_MESSAGE",
+        "messageId": msg_id,
+        "speaker": speaker,
+        "content": text,
+        "streaming": True,
+    }
+    await queue.put(f"data: {json.dumps(payload, ensure_ascii=False)}\n\n")
+
+
+async def _push_group_delta(
+    queue: asyncio.Queue, *, msg_id: str, delta: str
+) -> None:
+    """Append a text delta to a streaming group message (high frequency, no DB)."""
+    payload = {"type": "GROUP_MESSAGE", "messageId": msg_id, "delta": delta}
+    await queue.put(f"data: {json.dumps(payload, ensure_ascii=False)}\n\n")
+
+
+async def _push_group_close(
+    queue: asyncio.Queue, team_id: str, *, msg_id: str, speaker: str, text: str
+) -> None:
+    """Finalize a streaming group message: send the full text + persist once."""
+    payload = {
+        "type": "GROUP_MESSAGE",
+        "messageId": msg_id,
+        "speaker": speaker,
+        "content": text,
+        "streaming": False,
+    }
+    await queue.put(f"data: {json.dumps(payload, ensure_ascii=False)}\n\n")
+    # persist a single record (not one per token)
+    await session_store.add_link(
+        from_session_id=team_id,
+        to_session_id=team_id,
+        direction="chat",
+        content=f"[{speaker}] {text}",
+    )
 
 
 def _DONE_SENTINEL() -> dict:

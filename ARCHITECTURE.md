@@ -33,7 +33,7 @@
 
 ### 通信方式
 
-前端通过 `POST /agents/main`（AG-UI SSE）与后端通信，vite dev proxy 将请求转发到后端 `:8000`。
+前端通过 `POST /agents/main`（AG-UI SSE）与后端通信，vite dev proxy 将请求转发到后端 `:8999`。
 
 ### 三层 Agent 架构
 
@@ -61,7 +61,7 @@
 | 语言 | Python | `>=3.12`（`requires-python`） | `.python-version` 固定版本 |
 | 构建 / 包管理 | `uv`（`uv_build`） | `>=0.11.24,<0.12.0` | 锁文件 `uv.lock`；`[tool.uv] package=true`，`module-name = "openmanus"` |
 | Web 框架 | `fastapi` | `>=0.115` | 异步 HTTP 服务 |
-| ASGI 服务器 | `uvicorn[standard]` | `>=0.34` | 启动：`uv run uvicorn openmanus.main:app --reload --port 8000` |
+| ASGI 服务器 | `uvicorn[standard]` | `>=0.34` | 启动：`uv run uvicorn openmanus.main:app --reload --port 8999` |
 | 配置 | `pydantic-settings` | `>=2.5` | `.env` 驱动 `BaseSettings` |
 | 环境变量 | `python-dotenv` | `>=1.0` | `.env` 加载 |
 | Agent 核心 | `deepagents` | `>=0.1` | `create_deep_agent` 编排智能体 |
@@ -194,10 +194,11 @@ D:/deepagents-opencode/
 | `anthropic_base_url` | `str` | `"https://open.bigmodel.cn/api/anthropic"` | BigModel Anthropic 兼容端点 |
 | `openai_api_key` | `str` | `""` | OpenAI 密钥 |
 | `openai_base_url` | `str` | `"https://api.openai.com/v1"` | OpenAI 端点 |
+| `ssl_verify` | `bool` | `True` | 是否校验 TLS 证书（自签名 / 内网可置 False，两种 provider 均生效） |
 | `workdir` | `str` | `str(Path.cwd())` | agent 工作目录 |
 | `database_url` | `str` | `"sqlite:///./data/checkpoints.db"` | checkpointer 数据库 |
 | `host` | `str` | `"127.0.0.1"` | 监听地址 |
-| `port` | `int` | `8000` | 监听端口 |
+| `port` | `int` | `8999` | 监听端口 |
 | `cors_origins` | `str` | `"*"` | CORS 来源 |
 | `system_prompt` | `str` | 见下 | 基础系统提示 |
 
@@ -788,7 +789,7 @@ ANTHROPIC_BASE_URL=https://open.bigmodel.cn/api/anthropic
 WORKDIR=/path/to/your/project     # agent 工作目录
 DATABASE_URL=sqlite:///./data/checkpoints.db
 HOST=127.0.0.1
-PORT=8000
+PORT=8999
 CORS_ORIGINS=*
 ```
 
@@ -799,7 +800,7 @@ cd backend
 uv sync                            # 安装依赖（依据 uv.lock）
 
 # 启动后端（开发模式，热重载）
-uv run uvicorn openmanus.main:app --reload --port 8000
+uv run uvicorn openmanus.main:app --reload --port 8999
 ```
 
 启动后 `lifespan` 会依次执行：`init_db()` → `session_store.ensure_default()` → `build_agents()`，并打印 model / base_url / workdir / database_url 日志。
@@ -808,18 +809,18 @@ uv run uvicorn openmanus.main:app --reload --port 8000
 
 ```bash
 # 健康检查
-curl http://127.0.0.1:8000/agents/main/health
+curl http://127.0.0.1:8999/agents/main/health
 # {"status":"ok","model":"GLM-5.2","workdir":"..."}
 
 # AG-UI run（SSE）
-curl -N -X POST http://127.0.0.1:8000/agents/main/ \
+curl -N -X POST http://127.0.0.1:8999/agents/main/ \
   -H "Content-Type: application/json" \
   -d '{"messages":[{"role":"user","content":"hello"}]}'
 ```
 
 ### 前端联调
 
-前端（`frontend/`，vite dev）通过 dev proxy 将 `/agents/main` 转发到后端 `:8000`。启动前端后即可在 UI 中与 agent 交互。
+前端（`frontend/`，vite dev）通过 dev proxy 将 `/agents/main` 转发到后端 `:8999`。启动前端后即可在 UI 中与 agent 交互。
 
 ### 运行测试
 
@@ -833,4 +834,3 @@ uv run python tests/test_bridge.py
 ## 附录：代码规模
 
 代码总量小（**20 个 Python 文件，核心逻辑约 2078 行**，统计范围 `src/openmanus/` 递归），模块边界清晰，适合作为 AI 编码 Agent 后端参考。主要待改进项集中在：依赖声明完整性、子 agent 工具硬隔离、以及测试规范化（详见 §8.9）。
-文件，核心逻辑约 1500 行），模块边界清晰，适合作为 AI 编码 Agent 后端参考。主要待改进项集中在：依赖声明完整性、子 agent 工具硬隔离、以及测试规范化（详见 §8.9）。
