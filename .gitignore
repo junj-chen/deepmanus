@@ -36,6 +36,9 @@ backend/*_algorithm.py
 backend/bfs*.py
 backend/dfs*.py
 backend/agents/
+backend/out.txt
+tree_algorithms/
+*.b64
 
 # Editor / OS
 .DS_Store

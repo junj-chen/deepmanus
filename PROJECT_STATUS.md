@@ -1,7 +1,12 @@
 # OpenManus 项目记忆文档
 
-> 最后更新：2026-06-29 | 仓库：https://github.com/w00199552/deepmanus.git (main 分支)
+> 最后更新：2026-06-30 | 仓库：https://github.com/w00199552/deepmanus.git (main 分支)
 > 这份文档是项目的"长期记忆"，记录架构决策、实现现状、待办与已知问题。每次会话开始时优先读它恢复上下文。
+>
+> **Git 状态（重要）**：github.com 网络不稳（公司机器连不上）。远端最新 `a6f5018`，本地有 **2 个待推送 commit**：
+> - `930cb00` team 子 agent 完整流式 + ChatPane 串台修复 + 本文档
+> - `6199ae9` team 体验补全（teamleader 文本流式 + 子 agent 工具调用归属）
+> 网络通后执行 `git push origin main` 推送。
 
 ---
 
@@ -72,7 +77,13 @@ SQLite 两表（`backend/data/sessions.db`）：
 
 **关键坑（已解）**：deepagents 把整个 turn 的文本**复用同一个 messageId**，只在开头 START 一次、结尾 END 一次。前端必须按"时间线尾部是否开放文本段"判断，不能靠 messageId 区分段（否则工具后的文本被丢弃）。
 
-**群聊特殊帧**：team 用自定义 `GROUP_MESSAGE`（带 speaker 字段），前端单独渲染发言人气泡。
+**群聊特殊帧（GROUP_MESSAGE）**：team 用自定义 `GROUP_MESSAGE` 帧（带 speaker 字段），统一整个 team 群聊的渲染。**流式协议**（稳定 messageId）：
+- `open`：`{GROUP_MESSAGE, messageId:X, speaker, content:"开头", streaming:true}`
+- `delta`：`{GROUP_MESSAGE, messageId:X, delta:"逐字"}` ← 高频文本增量
+- `detail`：`{GROUP_MESSAGE, messageId:X, detail:"🔧 read_file"}` ← 工具调用，进该消息 details
+- `close`：`{GROUP_MESSAGE, messageId:X, speaker, content:"完整文本"}` ← 收尾覆盖 + 写 message_links
+
+teamleader 文本 + 子 agent 文本 + 子 agent 工具调用**全部走 GROUP_MESSAGE**（弃用了 team_runner 里 `_handle_chunk` 产标准无 speaker 帧的路径）。这样 speaker 永远明确，前端 TeamStore._appendGroup 统一处理 delta/detail/close 三种增量。
 
 ---
 
@@ -87,14 +98,14 @@ SQLite 两表（`backend/data/sessions.db`）：
 | `db.py` | SessionStore CRUD + ensure_default(固定 id，每次启动刷 title="Manus") + ensure_exists + graph 查询 |
 | `store.py` | get_checkpointer：SQLite（AsyncSqliteSaver）/ Postgres |
 | `single_runner.py` | SingleRegistry(队列) + launch_single + _run_single_agent(astream 流式到队列 + checkpointer) |
-| `team_runner.py` | TeamRegistry(队列) + launch_team + _run_teamleader + _push_group_message |
+| `team_runner.py` | TeamRegistry(队列) + launch_team + _run_teamleader(teamleader 文本流式走 GROUP_MESSAGE) + _push_group_open/delta/detail/close 流式辅助 |
 | `middleware/tool_guard.py` | **ToolGuardMiddleware**：双层硬约束（model-request + tool-execution）禁工具 |
 | `api/run.py` | POST /agents/main（AG-UI SSE）。_ensure_session（按 sessionId/header 创建会话）。run 期间 status=running→active |
 | `api/sessions.py` | CRUD + GET /:id(扁平时间线历史) + POST /:id/preview + POST /:id/reset(adelete_thread) + GET /:id/stream(subagent SSE) + GET /:id/graph |
 | `api/teams.py` | GET /teams/:id/stream(team SSE drain) + messages + POST message |
 | `tools/dispatch_single.py` | 异步单 agent 派活（default 用） |
 | `tools/dispatch_to_team.py` | 异步团队派活（default 用），创建 team + launch_teamleader，metadata.members=[teamleader,researcher,coder] |
-| `tools/dispatch_task.py` | 同步团队内派活（teamleader 用），创建 internal subagent，检测 team 上下文 push GROUP_MESSAGE |
+| `tools/dispatch_task.py` | 同步团队内派活（teamleader 用），创建 internal subagent，检测 team 上下文：子 agent astream 流式（on_text_delta + on_tool 回调）推 GROUP_MESSAGE delta/detail 到 team 队列 |
 | `tools/roles.py` | ROLES 字典（researcher/coder 的 prompt + allowed_tools） |
 
 **模型 provider 切换**：
@@ -164,10 +175,12 @@ DiceBear adventurer 风格，HTTP API 零依赖 `<img>`：
 
 ## 6. 当前 Todo（待办）
 
-### 高优先级（team 群聊打磨，进行中）
-- [ ] **[L-2]** team_runner：teamleader 文本增量走 GROUP_MESSAGE（现在只在开始/结束 push，中间思考文本走标准帧无 speaker）
-- [ ] **[L-4]** TeamStore._handleFrame 改进（TOOL_CALL 显示更友好）
-- [ ] **用户验证** team 群聊 4 个问题（speaker 区分/工作可见/头像/滚动）
+### 高优先级
+- [ ] **【待定位】team 群聊流仍有问题**：用户反馈"team 流还是有问题"（具体现象待确认——可能是 teamleader 流式中断/子 agent 文本重复/群聊不刷新/Group 渲染异常等）。需用户描述具体表现 + 看后端日志/前端 Network 定位。**这是当前阻塞项**。
+- [x] ~~[L-2] teamleader 文本流式走 GROUP_MESSAGE~~（已完成，6199ae9）
+- [x] ~~[L-4] 子 agent 工具调用归属正确角色~~（已完成，6199ae9，on_tool → _push_group_detail）
+- [x] ~~[L-1] dispatch_task team 上下文 push GROUP_MESSAGE~~（已完成，930cb00）
+- [x] ~~[L-3] TeamMessages DiceBear 头像 + 自动滚动~~（已完成）
 
 ### 中优先级
 - [ ] 前端模型配置 UI（输入框 ⚙️ 按钮做面板：选 provider/base_url/key/model，运行时切换不用改 .env）
@@ -177,7 +190,7 @@ DiceBear adventurer 风格，HTTP API 零依赖 `<img>`：
 
 ### 低优先级
 - [ ] 历史会话恢复的旧 root 显示（当前隐藏，后续可加历史回看入口）
-- [ ] 团队子 agent speaker 在群聊完全区分（researcher/coder 工作流更清晰）
+- [ ] team 群聊细节（teamleader 工具调用如 dispatch_task 的展示优化）
 
 ---
 
@@ -193,11 +206,20 @@ DiceBear adventurer 风格，HTTP API 零依赖 `<img>`：
 - ✅ 后端 502 → 包名/import 错误，改名后修复
 - ✅ default 标题不刷新 → ensure_default 每次启动强制 update title
 - ✅ 公司内网 SSL → SSL_VERIFY=false + httpx client 注入
+- ✅ 子 agent 干活空白卡住 → dispatch_task ainvoke→astream + GROUP_MESSAGE delta 流式
+- ✅ teamleader 思考不可见 → team_runner 弃标准帧，文本走 GROUP_MESSAGE 流式
+- ✅ 子 agent 工具调用不可见/归属混乱 → on_tool 回调 + _push_group_detail 归属到正确角色
 
-### 待观察 / 未定位
+### 待观察 / 未定位（当前阻塞项在此）
+- 🔴 **【当前阻塞】team 群聊流仍有问题**：用户反馈"team 的流还是有问题"。teamleader 流式 + 子 agent 流式 + 工具调用归属刚做完（6199ae9），但用户验证后仍报问题。**具体现象未确认**——可能方向：
+  - teamleader 文本流式中断/不出现
+  - 子 agent 文本重复（dispatch_task astream + checkpointer 读可能重复）
+  - GROUP_MESSAGE delta 前端不刷新（mobx observer 问题）
+  - detail 工具调用不显示
+  - 流式过程中 team 会话切换/dispose 时机问题
+  **定位方法**：① 用户描述具体现象 ② 看后端 .logs/backend.log 是否有 team_runner 报错 ③ 前端 F12 Network 看 /teams/:id/stream 的 SSE 帧实际内容 ④ Console 看有无 JS 报错
 - ⚠️ **前端轮询 404**：前端代码无任何 /health 轮询（已确认）。疑似 vite/浏览器/端口冲突。换端口 8999 后观察。需 Network 面板的 Initiator 列确认来源。
 - ⚠️ **SSL_VERIFY 对 ChatAnthropic 无效**：ChatAnthropic 不支持 http_client 注入（参数被转 model_kwargs）。公司用 OpenAI 模式不受影响，Anthropic 模式靠环境变量兜底。
-- ⚠️ **team 群聊 teamleader 中间思考不可见**：teamleader token 走标准 AG-UI 帧无 speaker，TeamStore._handleFrame 忽略文本帧。只有开始/结束 GROUP_MESSAGE。这是 [L-2] 待修。
 - ⚠️ **公司环境未实测**：公司模型连接、SSL 跳过、功能完整性需公司机器验证。
 
 ---
@@ -237,7 +259,11 @@ ANTHROPIC_BASE_URL=https://open.bigmodel.cn/api/anthropic
 ## 9. Git 状态
 
 - 仓库：https://github.com/w00199552/deepmanus.git（main 分支）
-- 最新 commit：`a6f5018`（SSL 证书跳过支持）
-- push 网络不稳定（github 偶尔连不上），失败时多重试
+- 远端最新：`a6f5018`（SSL 证书跳过）
+- **本地待推送 2 个 commit**（github 网络不稳，回家手动推）：
+  - `930cb00` team 子 agent 完整流式 + ChatPane 串台修复 + PROJECT_STATUS.md
+  - `6199ae9` team 体验补全（teamleader 流式 + 子 agent 工具调用归属）
+  - 注：PROJECT_STATUS.md 本身还有一次未提交的小改动（本次更新），可一起 `git add PROJECT_STATUS.md && git commit`
+- push 网络：github.com:443 公司机器连不上（需代理/换网络）。网络通后 `git push origin main`
 - .env 在 .gitignore（API key 不泄露）
 - agent 测试产物（bfs/dfs/workspace/Z 等）已加 .gitignore 排除
