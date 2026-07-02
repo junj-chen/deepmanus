@@ -1,0 +1,305 @@
+/**
+ * agentRuntime — the facade: orchestrates store + client + reducer, exposes
+ * observable state and actions. This is the ONLY object the view layer touches.
+ *
+ * Responsibilities (pure orchestration — it owns no domain logic itself):
+ *   - track which session/scope is currently being observed
+ *   - on switch: load history, (re)build the SSE subscription, drain events
+ *   - on send: POST to trigger the run (background), optimistic user bubble,
+ *     ensure a subscription is receiving the output
+ *   - route each incoming event to the right session in the message store
+ *   - keep running-state + the session list (unread/preview) in sync
+ *
+ * It deliberately does NOT: transform events (→ eventReducer), talk to
+ * EventSource directly (→ streamClient), or hold message arrays itself
+ * (→ messageStore). Each concern is one file; this one wires them.
+ *
+ * @module runtime/agentRuntime
+ */
+
+import { makeAutoObservable, runInAction } from "mobx";
+
+import { MessageStore } from "./messageStore.js";
+import { StreamClient } from "./streamClient.js";
+
+const BACKEND = (import.meta.env && import.meta.env.VITE_BACKEND_URL) || "";
+
+export class AgentRuntime {
+  /** @type {MessageStore} */
+  messageStore = new MessageStore();
+  /** @type {StreamClient} */
+  streamClient = new StreamClient();
+
+  // ─── injected collaborators ──────────────────────────────────────────────
+  /** @type {null | { sessions: any[], bumpActivity: Function, markRunning: Function, markStatus: Function }} */
+  _sessionStore = null;
+
+  // ─── internal handles (NOT observable — prefixed _) ─────────────────────
+  _subHandle = null;                 // current SSE subscription handle
+  _sendAborts = {};                  // session_id → AbortController (for stop)
+  _scopeMembers = {};                // scope_id → [session_id] (cached for merging)
+
+  // ─── observable state ───────────────────────────────────────────────────
+  /** The session the user is focused on. */
+  activeSessionId = null;
+  /** When set, the view is the team group-chat (fan-in of this scope's members). */
+  activeScopeId = null;
+  /** session_id → bool: a run is currently streaming for that session. */
+  runningBySession = {};
+  /** last error message, if any. */
+  error = null;
+
+  constructor() {
+    makeAutoObservable(this);
+  }
+
+  /** Inject the SessionStore (for list unread/preview/status sync). Optional. */
+  setSessionStore(s) {
+    this._sessionStore = s;
+  }
+
+  // ─── observable views (computed) ─────────────────────────────────────────
+
+  /** Messages for the current view: one session, or the team's merged timeline. */
+  get activeMessages() {
+    if (this.activeScopeId) {
+      return this._mergedScopeMessages(this.activeScopeId);
+    }
+    return this.messageStore.get(this.activeSessionId);
+  }
+
+  /** Is anything in the current view actively streaming? */
+  get isRunning() {
+    if (this.activeScopeId) {
+      const members = this._scopeMembers[this.activeScopeId] || [];
+      return members.some((sid) => this.runningBySession[sid]);
+    }
+    return !!this.runningBySession[this.activeSessionId];
+  }
+
+  // ─── actions ─────────────────────────────────────────────────────────────
+
+  /**
+   * Switch what the user is observing.
+   * @param {string} sessionId  the focus session
+   * @param {string|null} scopeId  null = single session; set = team fan-in view
+   */
+  setActive(sessionId, scopeId = null) {
+    this.activeSessionId = sessionId;
+    this.activeScopeId = scopeId;
+    // Rebuild the live subscription for the new view (async history load first).
+    this._resubscribe();
+  }
+
+  /**
+   * User sends a message: trigger the agent run (background POST), optimistically
+   * show the user bubble, and ensure we're subscribed to receive the output.
+   */
+  async send(sessionId, text) {
+    if (!text || !text.trim()) return;
+
+    // 1. optimistic user bubble
+    this.messageStore.appendMessage(sessionId, {
+      id: `u-${Date.now()}`,
+      role: "user",
+      speaker: "user",
+      content: [{ type: "text", text }],
+      status: "complete",
+      createdAt: Date.now(),
+    });
+
+    runInAction(() => {
+      this.runningBySession[sessionId] = true;
+      this.error = null;
+    });
+    this._sessionStore?.markRunning?.(sessionId);
+
+    // 2. Rebuild the subscription BEFORE triggering the run. The server starts
+    //    the run the instant POST is received (async), so events can appear the
+    //    moment POST returns. If we re-subscribe AFTER POST (as we once did),
+    //    early events are lost to the old (already-done) drain / a reconnecting
+    //    EventSource. Building the drain first guarantees every event is caught.
+    const inView =
+      this.activeScopeId
+        ? (this.activeSessionId === sessionId ||
+           (this._scopeMembers[this.activeScopeId] || []).includes(sessionId))
+        : (this.activeSessionId === sessionId);
+    if (inView) {
+      // Rebuild the subscription WITHOUT reloading history: the session's
+      // messages are already in the store (incl. the optimistic user bubble
+      // just appended), and a history fetch would overwrite that bubble.
+      this._resubscribe({ loadHistory: false });
+    } else {
+      this.streamClient.subscribe({ sessions: [sessionId] }, {
+        onEvent: (e) => this._dispatchEvent(e),
+      });
+    }
+
+    // 3. POST to trigger the run (does NOT stream back — events arrive via the
+    //    subscription built above). AbortController lets stop() cancel it.
+    const ac = new AbortController();
+    this._sendAborts[sessionId] = ac;
+    try {
+      const res = await fetch(`${BACKEND}/sessions/${encodeURIComponent(sessionId)}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: text }),
+        signal: ac.signal,
+      });
+      if (!res.ok) throw new Error(`send failed: ${res.status}`);
+    } catch (e) {
+      if (e.name === "AbortError") return; // user pressed stop
+      runInAction(() => (this.error = e.message || String(e)));
+      this._endRun(sessionId);
+      return;
+    } finally {
+      delete this._sendAborts[sessionId];
+    }
+  }
+
+  /** Stop an in-flight run for a session (aborts the POST + clears running). */
+  stop(sessionId = this.activeSessionId) {
+    const ac = this._sendAborts[sessionId];
+    if (ac) ac.abort();
+    this._endRun(sessionId);
+  }
+
+  /** Clear a session's messages (e.g. on "new chat" reset). */
+  clear(sessionId) {
+    this.messageStore.clear(sessionId);
+  }
+
+  // ─── internals ───────────────────────────────────────────────────────────
+
+  /**
+   * Route one incoming event to its session in the store + update running state.
+   * Called by the streamClient subscription callback.
+   */
+  _dispatchEvent(event) {
+    runInAction(() => {
+      const sid = event.session_id;
+      if (sid) this.messageStore.applyEvent(sid, event);
+      // done → that session's run finished
+      if (event.kind === "done" && sid) {
+        this._endRun(sid);
+      }
+      if (event.kind === "error") {
+        this.error = event.message || "agent error";
+      }
+    });
+  }
+
+  /** Mark a session's run as finished + sync the session list. */
+  _endRun(sessionId) {
+    runInAction(() => {
+      this.runningBySession[sessionId] = false;
+    });
+    if (this._sessionStore) {
+      const preview = this._lastAssistantText(sessionId);
+      const isActive =
+        (this.activeScopeId ? false : this.activeSessionId === sessionId) ||
+        (this.activeScopeId && (this._scopeMembers[this.activeScopeId] || []).includes(sessionId) && this.activeSessionId === sessionId);
+      this._sessionStore.bumpActivity?.(sessionId, {
+        unread: isActive ? 0 : 1,
+        preview,
+        speaker: "assistant",
+      });
+      this._sessionStore.markStatus?.(sessionId, "active");
+    }
+  }
+
+  /**
+   * Rebuild the live SSE subscription for the current view.
+   * @param {{ loadHistory?: boolean }} opts — loadHistory defaults true; pass
+   *   false on `send` (the session's history is already in the store, and a
+   *   re-fetch would overwrite the just-inserted optimistic user bubble).
+   */
+  _resubscribe({ loadHistory = true } = {}) {
+    // tear down the previous subscription
+    this._subHandle?.dispose();
+    this._subHandle = null;
+    if (!this.activeSessionId) return;
+
+    // load history for the focus session (and, in team view, its members)
+    if (loadHistory) {
+      this._loadHistory(this.activeSessionId);
+      if (this.activeScopeId) {
+        this._refreshScopeMembers(this.activeScopeId);
+        for (const sid of this._scopeMembers[this.activeScopeId] || []) {
+          this._loadHistory(sid);
+        }
+      }
+    }
+
+    // open the subscription (scope mode for teams, sessions mode otherwise)
+    const spec = this.activeScopeId
+      ? { scope: this.activeScopeId }
+      : { sessions: [this.activeSessionId] };
+    this._subHandle = this.streamClient.subscribe(spec, {
+      onEvent: (e) => this._dispatchEvent(e),
+      onDone: () => {
+        /* the view-level stream ended; per-session running cleared by done events */
+      },
+      onError: () => {
+        /* EventSource auto-reconnects; surface nothing by default */
+      },
+    });
+  }
+
+  /** Load a session's history into the store (once). */
+  async _loadHistory(sessionId) {
+    if (!sessionId || this.messageStore.isLoaded(sessionId)) return;
+    try {
+      const res = await fetch(`${BACKEND}/sessions/${encodeURIComponent(sessionId)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      runInAction(() => {
+        this.messageStore.set(sessionId, data.messages || []);
+      });
+    } catch {
+      /* best-effort; history reload can retry on next switch */
+    }
+  }
+
+  /** Refresh the cached member list for a scope from the session store. */
+  _refreshScopeMembers(scopeId) {
+    if (!this._sessionStore) return;
+    const members = [scopeId];
+    for (const s of this._sessionStore.sessions) {
+      if (s.scope_id === scopeId) members.push(s.id);
+    }
+    this._scopeMembers[scopeId] = Array.from(new Set(members));
+  }
+
+  /** Merge a scope's member sessions into one timeline (deduped by message id). */
+  _mergedScopeMessages(scopeId) {
+    this._refreshScopeMembers(scopeId);
+    const ids = this._scopeMembers[scopeId] || [scopeId];
+    const merged = [];
+    const seen = new Set();
+    for (const sid of ids) {
+      for (const m of this.messageStore.get(sid)) {
+        if (!seen.has(m.id)) {
+          seen.add(m.id);
+          merged.push(m);
+        }
+      }
+    }
+    return merged;
+  }
+
+  /** Last assistant text of a session (for the list preview). */
+  _lastAssistantText(sessionId) {
+    const msgs = this.messageStore.get(sessionId);
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i];
+      if (m.role !== "assistant") continue;
+      for (const p of m.content || []) {
+        if (p.type === "text" && p.text) {
+          return p.text.replace(/\s+/g, " ").trim().slice(0, 80);
+        }
+      }
+    }
+    return "";
+  }
+}

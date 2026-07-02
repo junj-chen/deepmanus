@@ -27,12 +27,12 @@ echo.
 
 REM --- 1. backend (Python, :8999) ---
 echo [deepmanus] starting backend  (logs: .logs\backend.log)
-start "deepmanus-backend" /D "%ROOT%backend" cmd /c "uv run uvicorn openmanus.main:app --port 8999 > %LOGDIR%\backend.log 2>&1"
+start "deepmanus-backend" /D "%ROOT%backend" cmd /c "uv run uvicorn openmanus.main:app --port 8999"
 
 REM --- 2. frontend (vite, :5173) ---
 timeout /t 2 /nobreak >nul
 echo [deepmanus] starting frontend (logs: .logs\frontend.log)
-start "deepmanus-frontend" /D "%ROOT%frontend" cmd /c "yarn dev > %LOGDIR%\frontend.log 2>&1"
+start "deepmanus-frontend" /D "%ROOT%frontend" cmd /c "yarn dev > %LOGDIR%\frontend.log"
 
 echo.
 echo [deepmanus] all services starting.

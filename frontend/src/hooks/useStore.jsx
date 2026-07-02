@@ -5,8 +5,9 @@ import { rootStore } from "@/stores";
 /**
  * React binding for the mobx RootStore singleton.
  *
- * Components read state via `useStore()` and call store *actions*; the chat
- * message stream comes from AG-UI SSE via agentService -> ChatStore.
+ * Components read state via `useStore()` and call store/runtime *actions*;
+ * the message stream comes from the multi-agent runtime (agentRuntime), an
+ * observable data source rendered by ThreadView.
  */
 const StoreContext = createContext(rootStore);
 
