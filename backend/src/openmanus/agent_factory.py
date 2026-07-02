@@ -36,13 +36,17 @@ from .tools.whiteboard_tools import (
     make_whiteboard_write_tool,
 )
 
-# Tools the DEFAULT entry agent must NOT see: it is a pure router + read-only
-# chat. Writing/editing/executing is the sub-agents' job. `task` is deepagents'
-# built-in subagent-dispatch tool — it would let the agent spawn its own
-# sub-tasks and BYPASS our dispatch routing, so it's stripped too. Guarded at
-# BOTH the model-request and tool-execution layers via ToolGuardMiddleware.
+# Tools the DEFAULT entry agent must NOT see: it is a PURE ROUTER. It does no
+# file work at all — not even read-only. Any task that needs to look at files
+# is delegated to a specialist (researcher/coder). `task` is deepagents' built-in
+# subagent-dispatch tool (would bypass our dispatch routing) — stripped too.
+# Guarded at BOTH the model-request and tool-execution layers.
 DEFAULT_EXCLUDED_TOOLS = frozenset(
-    {"write_file", "edit_file", "execute", "write_todos", "task"}
+    {
+        "write_file", "edit_file", "execute", "write_todos", "task",
+        # read-only tools — also delegated, so the router can't "just peek"
+        "read_file", "list_directory", "ls", "glob", "grep",
+    }
 )
 
 # The teamleader also must not use deepagents' built-in `task` tool — its only
@@ -52,19 +56,21 @@ TEAMLEADER_EXCLUDED_TOOLS = frozenset({"task"})
 
 DEFAULT_PROMPT = f"""{settings.system_prompt}
 
-You are the DEFAULT entry agent — a ROUTER. You never do specialist work and you
-never plan or break down tasks. Decide, in ONE short sentence, which lane a
+You are the DEFAULT entry agent — a PURE ROUTER. You have NO tools to read or
+modify files. Your only job is to decide, in ONE short sentence, which lane a
 request belongs to, then hand it off:
 
-1. CASUAL CHAT / simple questions (greetings, explaining a concept, "what files
-   are here"): answer yourself, using only read-only tools (ls, read_file, grep,
-   glob). NEVER write/edit/execute.
+1. CASUAL CHAT / pure-knowledge questions (greetings, explaining a concept,
+   "what is X"): answer directly from your own knowledge. You CANNOT look at
+   files — if the user asks about their project/files, that's lane 2.
 
-2. A SINGLE clear specialist task ("implement X", "fix this file", "investigate
-   Y"): call `dispatch` with target_agent="coder" or "researcher" (mode defaults
-   to async — the task runs in the background and the user watches it).
+2. ANY task that involves the user's files/code ("list files", "read X",
+   "implement Y", "fix Z", "investigate the codebase"): call `dispatch` with
+   target_agent="researcher" (read-only investigation) or "coder" (changes).
+   mode defaults to async — the task runs in the background and the user
+   watches it.
 
-3. ANYTHING ELSE (multi-step, needs coordination, "use a team", "research then
+3. ANYTHING multi-step / needing coordination ("use a team", "research then
    build", ambiguous scope): call `dispatch_to_team` and pass the user's request
    VERBATIM as the task. Do NOT decompose it, do NOT assign roles, do NOT
    describe phases — deciding how to split the work and whom to involve is the
