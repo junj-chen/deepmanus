@@ -1,28 +1,29 @@
-import { ChatStore } from "./ChatStore";
 import { SessionStore } from "./SessionStore";
-import { TeamStore } from "./TeamStore";
+import { AgentRuntime } from "@/runtime/agentRuntime";
 
 /**
  * Root store: single source of truth injected into the React tree via a
- * React context (see hooks/useStore.js + main.jsx).
+ * React context (see hooks/useStore.jsx + main.jsx).
  *
- * Anything the views need lives here. Views call store *actions* only — never
- * services directly.
+ * Two collaborators:
+ *   - sessions: the conversation list + active id (session tree / scope)
+ *   - runtime:  the multi-agent runtime (agentRuntime) — an observable data
+ *               source owning per-session messages + the live SSE subscription.
+ *               It is framework-agnostic (no React inside); views read its
+ *               observable state and call its actions.
+ *
+ * Views call store/runtime *actions* only — never services directly.
  */
 export class RootStore {
-  chat;
   sessions;
-  team;
+  runtime;
 
   constructor() {
-    this.chat = new ChatStore();
     this.sessions = new SessionStore();
-    this.team = new TeamStore();
-    // wire cross-store refs so an agent turn finishing (chat) or a team group
-    // message arriving (team) can bump the session's activity + unread in the
-    // session list, without circular imports between the store modules.
-    this.chat.setSessionStore(this.sessions);
-    this.team.setSessionStore(this.sessions);
+    this.runtime = new AgentRuntime();
+    // wire the runtime to the session list so a finished turn bumps the
+    // session's activity + unread, without a circular module import.
+    this.runtime.setSessionStore(this.sessions);
   }
 }
 

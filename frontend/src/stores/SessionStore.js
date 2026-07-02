@@ -83,17 +83,18 @@ export class SessionStore {
   }
 
   /**
-   * Derived work shown in the TASKS & TEAMS group. Includes teams always, and
-   * subagents that were dispatched DIRECTLY from the default entry (top-level
-   * single-agent tasks). Subagents spawned INSIDE a team (teamleader →
-   * specialist, marked metadata.internal) are hidden — they're team-internal
-   * execution detail, not top-level tasks.
+   * Derived work shown in the TASKS & TEAMS group. Teams always show (they're
+   * scope roots the user can open as group chats). A subagent shows here only
+   * if it was dispatched DIRECTLY from the default entry (top-level single
+   * task, scope_id is NULL) — subagents living INSIDE a team (scope_id = the
+   * team id) are team-internal execution detail and are viewed via the team's
+   * scope fan-in, so they're hidden from the top-level list.
    */
   get taskSessions() {
     return this.sortedSessions.filter(
       (s) =>
         s.kind === "team" ||
-        (s.kind === "subagent" && !s.metadata?.internal),
+        (s.kind === "subagent" && !s.scope_id),
     );
   }
 
@@ -104,9 +105,9 @@ export class SessionStore {
 
   /**
    * Mark a session as running right now (spinner in the list), locally.
-   * Called by ChatStore when a turn starts so the list reflects it instantly
-   * without waiting for the backend status update. Cleared by bumpActivity on
-   * turn end.
+   * Called by the runtime when a turn starts so the list reflects it
+   * instantly without waiting for the backend status update. Cleared by
+   * bumpActivity on turn end.
    */
   markRunning(id) {
     const s = this.sessions.find((x) => x.id === id);
@@ -128,10 +129,9 @@ export class SessionStore {
   }
 
   /**
-   * Mark that a session received new messages (called by ChatStore when an
-   * agent turn finishes, or TeamStore on a new group message). If the session
-   * is NOT the active one, increment its unread and refresh its activity time
-   * so it floats to the top of the list.
+   * Mark that a session received new messages (called by the runtime when an
+   * agent turn finishes). If the session is NOT the active one, increment its
+   * unread and refresh its activity time so it floats to the top of the list.
    *
    * If `preview` is given, it's written into the session row's metadata (for
    * the list's 2nd line) AND persisted server-side via setPreview. The local

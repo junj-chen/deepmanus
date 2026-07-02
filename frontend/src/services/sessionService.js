@@ -74,10 +74,3 @@ export async function deleteSession(id) {
   if (!res.ok) throw new Error(`deleteSession: ${res.status}`);
   return res.json();
 }
-
-/** Get the collaboration graph {nodes, links} for reactflow. */
-export async function getSessionGraph(id) {
-  const res = await fetch(`/sessions/${encodeURIComponent(id)}/graph`);
-  if (!res.ok) throw new Error(`getSessionGraph: ${res.status}`);
-  return res.json();
-}

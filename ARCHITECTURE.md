@@ -1,3 +1,4 @@
+
 # openmanus 架构文档（ARCHITECTURE）
 
 > 本文档面向新成员，系统性地介绍 **openmanus** 后端项目的整体架构、技术栈、模块职责、数据流与设计决策。
