@@ -41,17 +41,27 @@ export const ThreadView = observer(function ThreadView({ messages = [], session 
 
 /** Dispatch a message to its renderer by role. */
 function MessageRow({ message, session }) {
-  if (message.role === "user") return <UserMessage message={message} />;
+  if (message.role === "user") return <UserMessage message={message} session={session} />;
   return <AssistantMessage message={message} session={session} />;
 }
 
-/** A user-authored message bubble — right-aligned (chat-bubble style). */
-function UserMessage({ message }) {
+/**
+ * A user-authored message bubble — right-aligned (chat-bubble style).
+ *
+ * For a sub-agent session, the "user" message isn't from the human — it's the
+ * TASK the parent agent (e.g. Manus) delegated. So we label it with the
+ * delegator's identity (default "Manus") instead of "you", to reflect who
+ * actually sent the task to this agent.
+ */
+function UserMessage({ message, session }) {
   const text = extractText(message);
+  const isDelegated = session?.kind === "subagent";
+  const label = isDelegated ? "Manus" : "you";
+  const avatarSeed = isDelegated ? "manus-open" : "user-face";
   return (
     <div className="anim-rise mb-5 flex justify-end gap-3">
       <div className="min-w-0 max-w-[80%]">
-        <p className="mb-1 text-right text-[11px] font-medium text-muted-foreground">you</p>
+        <p className="mb-1 text-right text-[11px] font-medium text-muted-foreground">{label}</p>
         <div className="rounded-2xl rounded-tr-sm bg-accent/15 px-3.5 py-2">
           <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-foreground">
             {text}
@@ -59,7 +69,7 @@ function UserMessage({ message }) {
         </div>
       </div>
       <div className="mt-0.5 shrink-0">
-        <Avatar seed="user-face" size={28} />
+        <Avatar seed={avatarSeed} size={28} />
       </div>
     </div>
   );
