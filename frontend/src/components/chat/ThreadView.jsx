@@ -65,16 +65,21 @@ function UserMessage({ message }) {
   );
 }
 
-/** An assistant message: avatar (DiceBear by speaker) + thinking + text + tools. */
+/** An assistant message: avatar + thinking + interleaved text/tool parts.
+ *
+ * deepagents emits text→tool→text→tool within ONE turn (shared message_id),
+ * so we render the content parts IN ORDER (not "all text then all tools") to
+ * preserve the real working sequence: think, act, think, act.
+ */
 const AssistantMessage = observer(function AssistantMessage({ message, session }) {
   const speaker = message.speaker || "assistant";
   const seed = speakerSeed(speaker, session);
   const label = speakerLabel(speaker, session);
-  const text = extractText(message);
-  const tools = extractToolCalls(message);
   const thinking = message.thinking || "";
+  const parts = message.content || [];
   const streaming = message.status === "streaming";
-  const onlyThinking = streaming && !text && tools.length === 0;
+  const hasContent = parts.some((p) => (p.type === "text" && p.text) || p.type === "tool-call");
+  const onlyThinking = streaming && !hasContent;
   return (
     <div className="anim-rise mb-5 flex gap-3">
       <div className="mt-0.5 shrink-0">
@@ -89,18 +94,24 @@ const AssistantMessage = observer(function AssistantMessage({ message, session }
             </span>
           )}
         </p>
-        {thinking && <ThinkingBlock text={thinking} live={onlyThinking || (!text && streaming)} />}
+        {thinking && <ThinkingBlock text={thinking} live={onlyThinking || (!hasContent && streaming)} />}
         {onlyThinking && !thinking && (
           <p className="text-[13px] text-muted-foreground">thinking…</p>
         )}
-        {text && (
-          <p className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-foreground">
-            {text}
-          </p>
-        )}
-        {tools.map((t) => (
-          <ToolFence key={t.toolCallId} tool={t} />
-        ))}
+        {/* render parts IN ORDER: text + tool-call interleaved */}
+        {parts.map((part, i) => {
+          if (part.type === "text" && part.text) {
+            return (
+              <p key={`t-${i}`} className="whitespace-pre-wrap break-words text-[14px] leading-relaxed text-foreground">
+                {part.text}
+              </p>
+            );
+          }
+          if (part.type === "tool-call") {
+            return <ToolFence key={part.toolCallId || `f-${i}`} tool={part} />;
+          }
+          return null;
+        })}
       </div>
     </div>
   );
@@ -180,12 +191,6 @@ function extractText(message) {
     return c.filter((p) => p?.type === "text").map((p) => p.text || "").join("");
   }
   return "";
-}
-
-/** Tool-call parts from a message. */
-function extractToolCalls(message) {
-  if (!message || !Array.isArray(message.content)) return [];
-  return message.content.filter((p) => p?.type === "tool-call");
 }
 
 /** DiceBear seed for the speaker, consistent with SessionList. */
