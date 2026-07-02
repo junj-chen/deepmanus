@@ -206,6 +206,31 @@ export class AgentRuntime {
       });
       this._sessionStore.markStatus?.(sessionId, "active");
     }
+    // When the DEFAULT entry's turn ends, the agent may have dispatched a new
+    // sub-agent / team (via the dispatch tool). Refresh the session list so the
+    // new child appears without a manual page reload, then auto-switch to it
+    // so the user lands on the delegated work.
+    if (sessionId === "default") {
+      this._afterDelegation().catch(() => {});
+    }
+  }
+
+  /**
+   * After a default-agent turn: reload the session list and, if a NEW derived
+   * session (team / top-level subagent) appeared, switch the view to it.
+   * Detects "new" by diffing the id set before vs after the reload — more
+   * reliable than trusting a parent field.
+   */
+  async _afterDelegation() {
+    if (!this._sessionStore) return;
+    const before = new Set(this._sessionStore.sessions.map((s) => s.id));
+    const list = await this._sessionStore.load();
+    const child = _newestDerived(list, before);
+    if (child) {
+      // switching view also rebuilds the subscription + loads history
+      this.setActive(child.id, child.kind === "team" ? child.id : null);
+      this._sessionStore.select(child.id);
+    }
   }
 
   /**
@@ -302,4 +327,25 @@ export class AgentRuntime {
     }
     return "";
   }
+}
+
+/**
+ * Find the newest DERIVED session (team / top-level subagent) not in beforeIds.
+ * Used to auto-switch to the task the default agent just delegated: instead of
+ * trusting a parent field (which can be missing), we diff the session list
+ * before vs after reload and grab any new derived session. Picks the most
+ * recently updated one if several appeared.
+ */
+function _newestDerived(list, beforeIds) {
+  const fresh = (list || []).filter(
+    (s) =>
+      (s.kind === "team" || (s.kind === "subagent" && !s.scope_id)) &&
+      !beforeIds.has(s.id),
+  );
+  if (!fresh.length) return null;
+  return fresh.sort((a, b) => {
+    const ta = Date.parse((a.updated_at || a.created_at || "").replace(" ", "T")) || 0;
+    const tb = Date.parse((b.updated_at || b.created_at || "").replace(" ", "T")) || 0;
+    return tb - ta;
+  })[0];
 }
