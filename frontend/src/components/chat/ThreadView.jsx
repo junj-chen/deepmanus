@@ -193,11 +193,23 @@ function extractText(message) {
   return "";
 }
 
-/** DiceBear seed for the speaker, consistent with SessionList. */
+/**
+ * DiceBear seed for the speaker.
+ *
+ * Two cases:
+ *  - Single-agent view (1:1 with a session): use the SESSION ID as seed, so the
+ *    face EXACTLY matches SessionList's SessionAvatar for that session.
+ *  - Team group-chat view: the active session is the team itself, but each
+ *    message comes from a different participant (teamleader/researcher/coder).
+ *    Use the speaker name as seed so each participant gets a distinct face.
+ *    (Team-internal participants don't appear in SessionList, so there's no
+ *    list to stay consistent with.)
+ */
 function speakerSeed(speaker, session) {
-  if (!session) return "manus-open";
+  if (!session) return speaker || "manus-open";
+  if (session.kind === "team") return speaker || "team";
   if (session.id === "default") return "manus-open";
-  return speaker || session.id;
+  return session.id;
 }
 
 /** Display label for the speaker. */
