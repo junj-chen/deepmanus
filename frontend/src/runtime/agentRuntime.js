@@ -17,7 +17,7 @@
  * @module runtime/agentRuntime
  */
 
-import { makeAutoObservable, runInAction } from "mobx";
+import { makeAutoObservable, runInAction, markRaw } from "mobx";
 
 import { MessageStore } from "./messageStore.js";
 import { StreamClient } from "./streamClient.js";
@@ -37,7 +37,10 @@ export class AgentRuntime {
   // ─── internal handles (NOT observable — prefixed _) ─────────────────────
   _subHandle = null;                 // current SSE subscription handle
   _sendAborts = {};                  // session_id → AbortController (for stop)
-  _scopeMembers = {};                // scope_id → [session_id] (cached for merging)
+  // scope_id → [session_id] cache for team merging. markRaw: NOT observable —
+  // it's a write-cache that must NOT trigger computed re-runs (the team-view
+  // freeze was an infinite loop: computed read it → refresh wrote it → re-run).
+  _scopeMembers = markRaw({});
 
   // ─── observable state ───────────────────────────────────────────────────
   /** The session the user is focused on. */
@@ -187,6 +190,15 @@ export class AgentRuntime {
       if (event.kind === "error") {
         this.error = event.message || "agent error";
       }
+      // In team view, a new member agent may appear mid-run (teamleader
+      // dispatches coder/researcher). Refresh the member cache so the merged
+      // view picks it up. (Not in the computed — that would loop.)
+      if (this.activeScopeId && sid && event.kind === "message_start") {
+        const members = this._scopeMembers[this.activeScopeId] || [];
+        if (!members.includes(sid)) {
+          this._refreshScopeMembers(this.activeScopeId);
+        }
+      }
     });
   }
 
@@ -299,8 +311,12 @@ export class AgentRuntime {
 
   /** Merge a scope's member sessions into one timeline (deduped by message id). */
   _mergedScopeMessages(scopeId) {
-    this._refreshScopeMembers(scopeId);
-    const ids = this._scopeMembers[scopeId] || [scopeId];
+    // DO NOT call _refreshScopeMembers here — it writes _scopeMembers (an
+    // observable), which would trigger this computed to re-run → infinite loop
+    // (the team-view freeze). Members are refreshed in setActive/_resubscribe
+    // instead. Here we just read the cached list + fall back to live sessions.
+    const cached = this._scopeMembers[scopeId];
+    const ids = cached || [scopeId];
     const merged = [];
     const seen = new Set();
     for (const sid of ids) {
