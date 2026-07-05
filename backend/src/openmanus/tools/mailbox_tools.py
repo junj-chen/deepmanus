@@ -80,6 +80,7 @@ def make_dispatch_tool(*, workdir: str, default_mode: str = "sync") -> BaseTool:
         """
         if target_agent not in AGENT_CONFIGS:
             return f"Unknown agent '{target_agent}'. Available: {', '.join(ROLES.keys())}."
+        logger.warning("DISPATCH_CALL target=%s mode=%s caller=%s", target_agent, mode or default_mode, _config_session_id(config)[:12])
         from ..engine import engine  # lazy: avoid import cycle
         from ..agent_factory import build_agent
 
