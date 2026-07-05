@@ -22,6 +22,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from .chat_model import ChatGLM
 from .config import settings
+from .middleware.agent_trace import AgentTraceMiddleware
 from .middleware.tool_guard import ToolGuardMiddleware
 from .store import get_checkpointer
 from .tools.mailbox_tools import (
@@ -145,7 +146,10 @@ async def build_agent(role: str, workdir: str) -> CompiledStateGraph:
         tools=tools,
         backend=backend,
         checkpointer=own_checkpointer,
-        middleware=[ToolGuardMiddleware(excluded=excluded)],
+        middleware=[
+            ToolGuardMiddleware(excluded=excluded),
+            AgentTraceMiddleware(name=role),
+        ],
         name=f"openmanus-{role}",
     )
 

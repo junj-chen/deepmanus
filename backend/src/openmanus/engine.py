@@ -216,6 +216,8 @@ class StreamEngine:
         # CALLER's session id — when that caller's _stream ends, we launch its
         # pending dispatched agents.
         self._pending: dict[str, list] = {}
+        # Strong references to background tasks (asyncio may GC unreferenced ones).
+        self._tasks: set = set()
 
     async def run(
         self,
@@ -233,12 +235,18 @@ class StreamEngine:
         ``mode="sync"`` awaits completion and returns the final text.
         """
         if mode == "async":
-            asyncio.create_task(
+            # IMPORTANT: keep a reference to the task — asyncio does NOT hold a
+            # strong ref to tasks created via create_task, so an unreferenced
+            # task can be GC'd before it runs (this was why teamleader's run
+            # silently never started).
+            task = asyncio.create_task(
                 self._stream(
                     agent=agent, session_id=session_id, prompt=prompt,
                     speaker=speaker, include_subgraphs=include_subgraphs,
                 )
             )
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
             return None
         return await self._stream(
             agent=agent, session_id=session_id, prompt=prompt,
@@ -333,11 +341,13 @@ class StreamEngine:
             # cross-talk. Each runs as its own background task on its own session.
             pending = self._pending.pop(session_id, [])
             for p in pending:
-                asyncio.create_task(self._start_and_record(
+                task = asyncio.create_task(self._start_and_record(
                     agent=p["agent"], target_session_id=p["target_session_id"],
                     prompt=p["prompt"], speaker=p["speaker"],
                     scope_id=p["scope_id"], caller_session_id=p["caller_session_id"],
                 ))
+                self._tasks.add(task)
+                task.add_done_callback(self._tasks.discard)
         return await _final_text(agent, config)
 
     async def _start_and_record(
